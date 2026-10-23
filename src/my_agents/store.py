@@ -52,6 +52,9 @@ CREATE TABLE IF NOT EXISTS agent_memory (
     id INTEGER PRIMARY KEY, agent TEXT NOT NULL, kind TEXT DEFAULT 'fact', content TEXT NOT NULL,
     created TEXT
 );
+CREATE TABLE IF NOT EXISTS chat_threads (
+    id TEXT PRIMARY KEY, title TEXT, created TEXT, updated TEXT
+);
 CREATE TABLE IF NOT EXISTS skills (
     id INTEGER PRIMARY KEY, skill TEXT UNIQUE NOT NULL, level INTEGER, target INTEGER,
     evidence TEXT DEFAULT '', plan TEXT DEFAULT '', updated TEXT

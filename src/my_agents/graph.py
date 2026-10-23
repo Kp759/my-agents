@@ -248,7 +248,7 @@ def build_graph(
                         {"role": "user", "content": format_result(f"delegate to {spec.name}", final, untrusted=tainted)}
                     ],
                 }
-            return {"messages": [{"role": "assistant", "content": final}], "scratch": [],
+            return {"messages": [{"role": "assistant", "content": final, "agent": spec.name}], "scratch": [],
                     "pending_call": None, "done": True}
 
         return node

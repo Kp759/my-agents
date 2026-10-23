@@ -6,8 +6,10 @@ It only binds to 127.0.0.1 (your machine). It reads the same files the agents
 write, so it shows requests live while you use `my-agents chat` in a terminal.
 
 Hardening: requests must carry a Host of 127.0.0.1 or localhost (stops DNS
-rebinding, where a website re-points its domain at your machine); POSTs from
-another origin are refused; responses forbid framing, sniffing and outside scripts.
+rebinding, where a website re-points its domain at your machine). POSTs must
+carry the `X-My-Agents` header, which a web page on another site cannot send
+without a CORS preflight this server never approves, and POSTs from another
+origin are refused. Responses forbid framing, sniffing and outside scripts.
 """
 
 from __future__ import annotations
@@ -28,6 +30,7 @@ from ..memory import AgentMemory
 from ..report import eod_facts, eod_report, row_cost, totals
 from ..store import Store
 from ..tracing import Tracer
+from .chat import ChatManager
 
 INDEX = Path(__file__).with_name("index.html")
 TABLES = ("tasks", "experiments", "milestones", "papers", "skills", "quiz_results", "notes")
@@ -39,6 +42,13 @@ class API:
         self.tracer = Tracer()
         self.board = Board(self.store)
         self.memory = AgentMemory(self.store)
+        self._chat = None
+
+    @property
+    def chat(self) -> ChatManager:
+        if self._chat is None:  # built on first use: loads agents and the checkpointer
+            self._chat = ChatManager(self.store, self.tracer)
+        return self._chat
 
     def _config(self) -> dict:
         return yaml.safe_load(DEFAULT_CONFIG.read_text()) or {}
@@ -174,6 +184,12 @@ def make_handler(api: API):
                     return self._send(api.memory_view())
                 if url.path == "/api/eod":
                     return self._send(api.eod(q.get("date"), False, False))
+                if url.path == "/api/chat/threads":
+                    return self._send(api.chat.threads())
+                if url.path == "/api/chat/new":
+                    return self._send({"thread_id": api.chat.new_thread()})
+                if url.path == "/api/chat/state":
+                    return self._send(api.chat.state(q.get("thread", "")))
                 return self._send({"error": "not found"}, 404)
             except Exception as e:
                 return self._send({"error": f"{type(e).__name__}: {e}"}, 500)
@@ -187,13 +203,29 @@ def make_handler(api: API):
             origin = self.headers.get("Origin")
             if origin and urlparse(origin).netloc != self.headers.get("Host"):
                 return self._send({"error": "cross-origin request refused"}, 403)
+            if self.headers.get("X-My-Agents") != "1":
+                return self._send({"error": "missing X-My-Agents header"}, 403)
+            length = int(self.headers.get("Content-Length") or 0)
+            if length > 100_000:
+                return self._send({"error": "request too large"}, 413)
+            try:
+                body = json.loads(self.rfile.read(length) or b"{}") if length else {}
+            except json.JSONDecodeError:
+                return self._send({"error": "invalid JSON"}, 400)
             try:
                 if m := re.fullmatch(r"/api/memory/(\d+)/delete", url.path):
                     api.store.delete("agent_memory", int(m.group(1)))
                     return self._send({"ok": True})
                 if url.path == "/api/eod":
                     return self._send(api.eod(q.get("date"), True, q.get("llm") == "1"))
+                if url.path == "/api/chat/send":
+                    return self._send(api.chat.send(str(body.get("thread_id", "")), str(body.get("text", "")),
+                                                    body.get("agent") or None))
+                if url.path == "/api/chat/decide":
+                    return self._send(api.chat.decide(str(body.get("thread_id", "")), str(body.get("decision", ""))))
                 return self._send({"error": "not found"}, 404)
+            except ValueError as e:
+                return self._send({"error": str(e)}, 400)
             except Exception as e:
                 return self._send({"error": f"{type(e).__name__}: {e}"}, 500)
 

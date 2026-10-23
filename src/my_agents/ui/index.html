@@ -79,6 +79,33 @@ button.del:hover { color: var(--err); }
 .learn p { margin: 4px 0 8px; max-width: 75ch; }
 svg text { fill: var(--ink); font: 12px -apple-system, sans-serif; }
 .empty { color: var(--muted); padding: 20px 0; text-align: center; }
+.chatgrid { display: grid; grid-template-columns: 200px minmax(0, 1fr) minmax(0, 420px); gap: 16px;
+            height: calc(100vh - 100px); }
+.chatgrid .panel { overflow: auto; }
+@media (max-width: 1100px) { .chatgrid { grid-template-columns: 1fr; height: auto; } .chatgrid .panel { max-height: none; } }
+.conv { display: flex; flex-direction: column; padding: 0; }
+.msgs { flex: 1; overflow: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px; min-height: 300px; }
+.bubble { max-width: 85%; padding: 10px 14px; border-radius: 12px; word-break: break-word; }
+.bubble.user { align-self: flex-end; background: var(--accent); color: #fff; border-bottom-right-radius: 4px;
+               white-space: pre-wrap; }
+.bubble.agent { align-self: flex-start; background: var(--bg); border: 1px solid var(--line);
+                border-left: 4px solid var(--lane); border-bottom-left-radius: 4px; }
+.bubble.agent p:first-child { margin-top: 4px; } .bubble.agent p:last-child { margin-bottom: 0; }
+.composer { border-top: 1px solid var(--line); padding: 12px; display: flex; gap: 8px; align-items: flex-end;
+            flex-wrap: wrap; }
+.composer textarea { flex: 1; min-width: 200px; min-height: 44px; max-height: 200px; resize: vertical; font: inherit;
+                     padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel);
+                     color: var(--ink); }
+.composer select { font: inherit; padding: 8px; border: 1px solid var(--line); border-radius: 8px;
+                   background: var(--panel); color: var(--ink); }
+.approval { border: 2px solid var(--accent); border-radius: 10px; padding: 12px; background: var(--panel); }
+.approval pre { max-height: 240px; }
+.working { color: var(--muted); font-size: 13px; display: flex; align-items: center; gap: 8px; }
+.spinner { width: 12px; height: 12px; border: 2px solid var(--line); border-top-color: var(--accent);
+           border-radius: 50%; animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+button:disabled { opacity: .5; cursor: not-allowed; }
 </style>
 </head>
 <body>
@@ -91,16 +118,19 @@ svg text { fill: var(--ink); font: 12px -apple-system, sans-serif; }
 
 <script>
 const TABS = [
-  ["live", "Live"], ["requests", "Requests"], ["agents", "Agents"],
+  ["chat", "Chat"], ["live", "Live"], ["requests", "Requests"], ["agents", "Agents"],
   ["memory", "Memory"], ["eod", "End of day"], ["learn", "How it works"],
 ];
-let tab = location.hash.slice(1) || "live";
+let tab = location.hash.slice(1) || "chat";
 let selectedRun = null;
 let timer = null;
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const api = async (path, opts) => (await fetch(path, opts)).json();
+// Every POST carries X-My-Agents: the server refuses POSTs without it (blocks cross-site requests).
+const post = (path, body = {}) => api(path, {method: "POST", body: JSON.stringify(body),
+  headers: {"Content-Type": "application/json", "X-My-Agents": "1"}});
 const hue = (name) => { let h = 0; for (const c of String(name)) h = (h * 31 + c.charCodeAt(0)) % 360; return h; };
 const lane = (name) => `hsl(${hue(name)} 55% 50%)`;
 const k = (n) => n == null ? "–" : n >= 1000 ? (n / 1000).toFixed(1) + "k" : String(n);
@@ -117,9 +147,9 @@ function go(id) { tab = id; location.hash = id; renderTabs(); show(); }
 
 async function show() {
   clearInterval(timer);
-  const views = {live, requests, agents, memory, eod, learn};
+  const views = {chat, live, requests, agents, memory, eod, learn};
   await views[tab]();
-  if (["live", "requests"].includes(tab)) timer = setInterval(() => views[tab](true), 2000);
+  if (["chat", "live", "requests"].includes(tab)) timer = setInterval(() => views[tab](true), tab === "chat" ? 1200 : 2000);
 }
 
 // ---------- request timeline ----------
@@ -207,6 +237,105 @@ function keepOpen(container, html) {
   container.innerHTML = html;
   const all = container.querySelectorAll("details");
   open.forEach((i) => all[i] && (all[i].open = true));
+}
+
+// ---------- chat ----------
+let chatThread = null, chatAgents = null, chatKey = "";
+try { chatThread = localStorage.getItem("chatThread"); } catch (e) {}
+
+async function chat(refresh) {
+  if (!chatAgents) chatAgents = (await api("/api/agents")).agents.map((a) => a.name);
+  if (!chatThread) await newChat(false);
+  const [threads, st] = await Promise.all([api("/api/chat/threads"), api(`/api/chat/state?thread=${chatThread}`)]);
+  if (!refresh || !$("#msgs")) {
+    $("#view").innerHTML = `<div class="chatgrid">
+      <div class="panel"><button class="btn primary" style="width:100%" onclick="newChat(true)">+ New chat</button>
+        <div id="threads" class="list" style="margin-top:10px"></div></div>
+      <div class="panel conv"><div id="msgs" class="msgs"></div>
+        <div class="composer">
+          <select id="pick" title="Who should answer">
+            <option value="">Auto (router decides)</option>
+            ${chatAgents.map((a) => `<option value="${esc(a)}">@${esc(a)}</option>`).join("")}</select>
+          <textarea id="box" placeholder="Message your agents…  (Enter to send, Shift+Enter for a new line)"></textarea>
+          <button id="send" class="btn primary" onclick="sendChat()">Send</button></div></div>
+      <div class="panel"><h2>What's happening</h2><div id="steps"></div></div></div>`;
+    $("#box").addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendChat(); }
+    });
+  }
+  const key = JSON.stringify([chatThread, st.state, st.messages.length, st.request_id, threads.length]);
+  const busy = st.state === "running" || st.state === "approval";
+  $("#send").disabled = busy;
+  $("#threads").innerHTML = threads.map((t) => `
+    <div class="item ${t.id === chatThread ? "on" : ""}" onclick="openChat('${esc(t.id)}')">
+      <div class="small">${esc(t.title || "(new chat)")}</div>
+      <div class="small muted">${new Date(t.updated).toLocaleString([], {month: "short", day: "numeric", hour: "2-digit", minute: "2-digit"})}
+      ${t.state !== "idle" ? ` · ${esc(t.state)}` : ""}</div></div>`).join("") || `<div class="small muted">No chats yet.</div>`;
+  if (key !== chatKey) {
+    chatKey = key;
+    const msgs = st.messages.map((m) => m.role === "user"
+      ? `<div class="bubble user">${esc(m.content)}</div>`
+      : `<div class="bubble agent" style="--lane:${lane(m.agent || "agent")}">${m.agent ? agentChip(m.agent) : ""}${md(m.content)}</div>`);
+    if (st.state === "running") msgs.push(`<div class="working"><span class="spinner"></span>agents are working… follow along on the right</div>`);
+    if (st.state === "approval") msgs.push(approvalCard(st.approval));
+    if (st.state === "error") msgs.push(`<div class="err small">Error: ${esc(st.error)}</div>`);
+    if (!st.messages.length && st.state === "idle") msgs.push(`<div class="empty">Ask anything. The router picks an agent, or choose one below.<br>
+      Try: “quiz me on attention”, “log an experiment…”, “plan my week”.</div>`);
+    const box = $("#msgs");
+    box.innerHTML = msgs.join("");
+    box.scrollTop = box.scrollHeight;
+  }
+  if (st.request_id) keepOpen($("#steps"), await runDetail(st.request_id));
+  else $("#steps").innerHTML = `<div class="empty small">Each step of your next message (routing, tool calls,
+    delegations, cost) appears here as it happens.</div>`;
+}
+
+function approvalCard(a) {
+  const args = Object.entries(a.args || {}).map(([k, v]) =>
+    `<div class="msg"><b>${esc(k)}</b><pre>${esc(typeof v === "string" ? v : JSON.stringify(v, null, 2))}</pre></div>`).join("");
+  return `<div class="approval">
+    <div><b>${agentChip(a.agent)} wants to run <code>${esc(a.tool)}</code></b></div>
+    <div class="small muted" style="margin:4px 0 8px">${esc(a.reason || "")}. Read the arguments before allowing.</div>
+    ${args}
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+      <button class="btn primary" onclick="decide('yes')">Allow</button>
+      <button class="btn" onclick="decide('no')">Deny</button>
+      ${a.allow_all ? `<button class="btn" onclick="decide('all')" title="Approve every write for the rest of this request">Allow all writes for this request</button>` : ""}
+    </div></div>`;
+}
+
+async function sendChat() {
+  const text = $("#box").value.trim();
+  if (!text || $("#send").disabled) return;
+  $("#send").disabled = true;
+  const r = await post("/api/chat/send", {thread_id: chatThread, text, agent: $("#pick").value || null});
+  if (r.error) { alertBox(r.error); $("#send").disabled = false; return; }
+  $("#box").value = "";
+  chatKey = "";
+  chat(true);
+}
+async function decide(decision) {
+  const r = await post("/api/chat/decide", {thread_id: chatThread, decision});
+  if (r.error) alertBox(r.error);
+  chatKey = "";
+  chat(true);
+}
+async function newChat(render) {
+  chatThread = (await api("/api/chat/new")).thread_id;
+  try { localStorage.setItem("chatThread", chatThread); } catch (e) {}
+  chatKey = "";
+  if (render) chat(true);
+}
+function openChat(id) {
+  chatThread = id;
+  try { localStorage.setItem("chatThread", id); } catch (e) {}
+  chatKey = "";
+  chat(true);
+}
+function alertBox(text) {
+  const box = $("#msgs");
+  box.insertAdjacentHTML("beforeend", `<div class="err small">${esc(text)}</div>`);
+  box.scrollTop = box.scrollHeight;
 }
 
 // ---------- tabs ----------
@@ -319,11 +448,14 @@ async function memory() {
     <div class="panel"><h2>Shared store · what agents read and write through tools</h2>${tables}</div>`;
 }
 async function forget(id) {
-  await api(`/api/memory/${id}/delete`, {method: "POST"});
+  await post(`/api/memory/${id}/delete`);
   memory();
 }
 
 function md(text) {
+  // fenced code blocks first, so their contents are not treated as markdown
+  const parts = String(text ?? "").split(/^```[^\n]*\n?/m);
+  if (parts.length > 2) return parts.map((p, i) => i % 2 ? `<pre>${esc(p.replace(/\n$/, ""))}</pre>` : md(p)).join("");
   const lines = esc(text).split("\n");
   let html = "", table = [];
   const inline = (s) => s.replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/`(.+?)`/g, "<code>$1</code>")
@@ -362,13 +494,15 @@ async function eod() {
 }
 async function makeEod(llm) {
   $("#eodstatus").textContent = llm ? "writing the summary with the local model…" : "computing…";
-  await api(`/api/eod?date=${$("#eodday").value}&llm=${llm ? 1 : 0}`, {method: "POST"});
+  await post(`/api/eod?date=${$("#eodday").value}&llm=${llm ? 1 : 0}`);
   eod();
 }
 
 function learn() {
   $("#view").innerHTML = `<div class="panel learn"><h2>How this multi-agent system works</h2>
   <p class="muted">Every concept below is visible in the other tabs, and each points to the code that implements it. Nothing is hidden: open any step in <b>Requests</b> to see the exact prompt the model received and its raw reply.</p>
+
+  <p>The <b>Chat</b> tab runs exactly the same graph as <code>my-agents chat</code>; its right-hand panel is the same step-by-step trace as the Requests tab, live.</p>
 
   <h3>1. A request comes in: routing</h3>
   <p>Your message first reaches the <b>router</b>, a small local model (Qwen3 8B through Ollama) that reads one-line descriptions of every agent and answers with a name. It is fast (≈0.4 s) and free. If its answer names no agent, the request goes to the default agent. <code>@agent</code> skips routing. <i>Code: <code>graph.py → route</code>, prompt <code>ROUTER_PROMPT</code>.</i></p>

@@ -5,7 +5,8 @@ description: >-
   summaries, plans).
 backend: claude-cli
 model: sonnet
-tools: [add_task, list_tasks, update_task, complete_task, delete_task, add_note]
+tools: [add_task, list_tasks, update_task, complete_task, delete_task, add_note, github_my_repos,
+        github_issues, github_issue, github_create_issue]
 system_prompt: |
   You are the Task Runner. You keep the student's to-do list accurate and you get tasks done.
 

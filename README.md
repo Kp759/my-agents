@@ -49,7 +49,7 @@ Needs Python 3.11+, and any of: [Claude Code](https://claude.com/claude-code) (s
 python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"
 .venv/bin/my-agents doctor              # which backends are reachable
 .venv/bin/my-agents chat                # talk to the team; @writer, @coder… to pick an agent
-.venv/bin/my-agents ui                  # dashboard at http://127.0.0.1:8765
+.venv/bin/my-agents ui                  # dashboard + chat at http://127.0.0.1:8765
 ```
 
 | Command | What it shows |
@@ -59,8 +59,12 @@ python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"
 | `my-agents trace [ID]` | Replay a past request step by step |
 | `my-agents board -f` | Live feed of what every agent is working on |
 | `my-agents eod` | End-of-day report: what each agent did, how, and the cost |
-| `my-agents ui` | Dashboard: live board, step-by-step timelines with exact prompts, team topology, memory, EOD |
+| `my-agents ui` | **Chat with the agents in the browser** (approve actions there too), plus a live board, step-by-step timelines with exact prompts, team topology, memory and EOD |
 | `my-agents agents` / `tools` | Agents, their tools and delegates; tools and their safety flags |
+
+## GitHub
+
+Agents use the `gh` CLI (`gh auth login`). They can search repos (for example, official code for a paper), read READMEs, files, issues, PRs and diffs, and clone repos into `~/Downloads/agent-repos`. The Coder can push a feature branch and open a **draft** PR, and the Coder and Reviewer can comment. Every write asks you first and only works on repos in `github.write_repos` (default: your own).
 
 ## Configure
 
@@ -73,6 +77,7 @@ python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"
   - `eod`: which model writes the end-of-day prose.
   - `pricing`: per-token prices, used to estimate cost for backends that don't report it.
   - `security.allowed_roots`: the folders file and code tools may touch.
+  - `github.write_repos`: the repos agents may open issues, comments and PRs on (always with your approval).
 
 **Cost:** Claude's CLI reports the API-equivalent price of each call. On a subscription you aren't billed this, but it's the right number for comparing designs. Codex reports tokens only.
 

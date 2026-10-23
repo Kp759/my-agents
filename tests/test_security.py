@@ -238,3 +238,76 @@ def test_cli_accounts_are_pinned_and_api_keys_dropped(monkeypatch, tmp_path):
     c, x = accounts.claude_env(), accounts.codex_env()
     assert c["CLAUDE_CONFIG_DIR"].endswith(".claude-test") and "ANTHROPIC_API_KEY" not in c
     assert x["CODEX_HOME"].endswith(".codex-test") and "OPENAI_API_KEY" not in x
+
+
+# ---- GitHub ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def gh(monkeypatch, tmp_path):
+    """Record gh calls instead of running them; config allows writes to Kp759/* only."""
+    from my_agents.tools import github
+
+    cfg = tmp_path / "config.yaml"
+    cfg.write_text("owner: Dr.K\ngithub:\n  write_repos: ['Kp759/*']\n")
+    monkeypatch.setattr(github, "CONFIG", cfg)
+    calls = []
+
+    def fake_gh(*args, cwd=None, timeout=60):
+        calls.append(args)
+        if args[:2] == ("repo", "view"):
+            return json.dumps({"defaultBranchRef": {"name": "main"}})
+        return json.dumps({"html_url": "https://github.com/x"}) if args[0] == "api" else "https://github.com/x/1\n"
+
+    monkeypatch.setattr(github, "_gh", fake_gh)
+    return github, calls
+
+
+@pytest.mark.parametrize("bad", ["--repo=evil/x", "a/b; rm -rf ~", "a/b/c", "../etc", "-x/y", "a/b --web"])
+def test_github_rejects_argument_injection(gh, bad):
+    github, calls = gh
+    with pytest.raises(ValueError):
+        github.github_issues(bad)
+    assert calls == []
+
+
+def test_github_rejects_path_traversal(gh):
+    github, _ = gh
+    with pytest.raises(ValueError):
+        github.github_read_file("Kp759/my-agents", "../../secrets")
+    with pytest.raises(ValueError):
+        github.github_read_file("Kp759/my-agents", "README.md", ref="--upload-pack=evil")
+
+
+def test_github_writes_only_to_allowed_repos(gh):
+    github, calls = gh
+    with pytest.raises(GuardrailError):
+        github.github_create_issue("someone-else/project", "t", "injected")
+    with pytest.raises(GuardrailError):
+        github.github_comment("torvalds/linux", 1, "spam")
+    assert calls == []
+    github.github_create_issue("Kp759/my-agents", "Bug", "details")
+    body = calls[-1][calls[-1].index("--body") + 1]
+    assert "Drafted by Dr.K's agents" in body  # posts are signed
+
+
+def test_github_pr_never_from_default_branch(gh, tmp_path, monkeypatch):
+    import subprocess
+
+    github, _ = gh
+    repo = tmp_path / "allowed" / "proj"
+    repo.mkdir(parents=True)
+    monkeypatch.setenv("MY_AGENTS_ALLOWED_ROOTS", str(tmp_path / "allowed"))
+    git = lambda *a: subprocess.run(["git", "-C", str(repo), *a], check=True, capture_output=True)
+    git("init", "-b", "main")
+    git("remote", "add", "origin", "https://github.com/Kp759/proj.git")
+    with pytest.raises(GuardrailError):
+        github.github_create_pr(str(repo), "t", "b")
+
+
+def test_github_tools_are_flagged_correctly():
+    tools = make_toolbox(Store(":memory:"))
+    for name in ("github_repo", "github_read_file", "github_issue", "github_pr", "github_search_repos"):
+        assert tools[name].untrusted and not tools[name].writes
+    for name in ("github_create_issue", "github_comment", "github_create_pr"):
+        assert tools[name].approval and tools[name].writes

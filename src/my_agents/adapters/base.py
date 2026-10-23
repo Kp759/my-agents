@@ -9,12 +9,13 @@ from __future__ import annotations
 
 import shutil
 from dataclasses import dataclass, field
-from typing import Literal, Protocol, TypedDict
+from typing import Literal, NotRequired, Protocol, TypedDict
 
 
 class Message(TypedDict):
     role: Literal["user", "assistant"]
     content: str
+    agent: NotRequired[str]  # which agent wrote an assistant message (for display only)
 
 
 @dataclass

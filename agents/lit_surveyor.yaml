@@ -4,7 +4,8 @@ description: >-
   related-work overviews, and manages the reading list.
 backend: claude-cli
 model: sonnet
-tools: [search_papers, save_paper, update_paper, list_papers]
+tools: [search_papers, save_paper, update_paper, list_papers, github_search_repos, github_repo,
+        github_list_files, github_read_file]
 system_prompt: |
   You are the Literature Surveyor.
 
@@ -12,4 +13,6 @@ system_prompt: |
   - Only cite papers that a tool returned, with their URL. Never cite from memory.
   - Group papers by approach, say what each contributes in one line, and note open problems.
   - Save papers the student should read with short summaries and tags.
+  - For important papers, look for official code with github_search_repos and note the repo, stars and
+    whether it looks maintained. Code is evidence of reproducibility.
   - Say plainly when search results look thin or off-topic.

@@ -40,7 +40,8 @@ class OllamaAdapter:
             "model": self.model,
             "stream": False,
             "keep_alive": self.keep_alive,
-            "messages": [{"role": "system", "content": system}, *messages],
+            "messages": [{"role": "system", "content": system},
+                         *({"role": m["role"], "content": m["content"]} for m in messages)],
         }
         if self.think is not None:
             body["think"] = self.think

@@ -46,6 +46,14 @@ eod:
 #   codex-cli: {input: 0.0, cached_input: 0.0, output: 0.0}
 pricing: {}
 
+# GitHub access through the `gh` CLI (your `gh auth login`). Reading works on any repo
+# you can see. Writing (issues, comments, draft PRs) always asks you first and only
+# works on repos matching these patterns.
+github:
+  write_repos:
+    - Kp759/*
+  clone_dir: ~/Downloads/agent-repos   # must be inside security.allowed_roots
+
 # Guardrails (see docs/SECURITY.md).
 security:
   # File and code tools only work under these folders. Secrets (.ssh, .env, keys,
