@@ -20,10 +20,12 @@ class OllamaAdapter:
         timeout: int = 300,
         host: str | None = None,
         think: bool | None = None,
+        keep_alive: str = "30m",
     ):
         self.model = model
         self.think = think  # reasoning models (e.g. Qwen3): False skips the thinking phase; None = model default
         self.timeout = timeout
+        self.keep_alive = keep_alive  # how long Ollama keeps the model in memory after a call
         self.host = (host or os.environ.get("OLLAMA_HOST", "http://localhost:11434")).rstrip("/")
 
     def available(self) -> bool:
@@ -37,6 +39,7 @@ class OllamaAdapter:
         body = {
             "model": self.model,
             "stream": False,
+            "keep_alive": self.keep_alive,
             "messages": [{"role": "system", "content": system}, *messages],
         }
         if self.think is not None:
@@ -61,5 +64,6 @@ class OllamaAdapter:
             usage={
                 "input_tokens": out.get("prompt_eval_count", 0),
                 "output_tokens": out.get("eval_count", 0),
+                "cost_usd": 0.0,
             },
         )

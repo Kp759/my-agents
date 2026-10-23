@@ -25,6 +25,9 @@ class AgentSpec:
     backend: str
     model: str | None = None
     options: dict = field(default_factory=dict)  # backend-specific, e.g. {think: false}
+    tools: list[str] = field(default_factory=list)  # tool names from my_agents.tools
+    delegates: list[str] = field(default_factory=list)  # agents this one may hand sub-tasks to
+    board_context: bool = False  # show recent board posts in the system prompt
 
     def adapter(self) -> ChatAdapter:
         return make_adapter(self.backend, self.model, **self.options)
@@ -36,6 +39,11 @@ class RouterConfig:
     model: str | None
     default_agent: str
     options: dict = field(default_factory=dict)
+    # "router": the local router picks an agent per message (cheap; multi-step requests go to the orchestrator).
+    # "orchestrator": every message goes to the orchestrator, which delegates.
+    entry: str = "router"
+    orchestrator: str = "orchestrator"
+    mission: str = ""  # prepended to every agent's system prompt
 
 
 def load_agents(directory: Path = DEFAULT_AGENTS_DIR) -> dict[str, AgentSpec]:
@@ -54,10 +62,14 @@ def load_agents(directory: Path = DEFAULT_AGENTS_DIR) -> dict[str, AgentSpec]:
 
 
 def load_router_config(path: Path = DEFAULT_CONFIG) -> RouterConfig:
-    data = yaml.safe_load(path.read_text())["router"]
+    config = yaml.safe_load(path.read_text())
+    data = config["router"]
     return RouterConfig(
         backend=data["backend"],
         model=data.get("model"),
         default_agent=data["default_agent"],
         options=data.get("options") or {},
+        entry=data.get("entry", "router"),
+        orchestrator=data.get("orchestrator", "orchestrator"),
+        mission=(config.get("mission") or "").strip(),
     )

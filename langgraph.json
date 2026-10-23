@@ -1,0 +1,6 @@
+{
+  "dependencies": ["."],
+  "graphs": {
+    "my_agents": "./src/my_agents/studio.py:graph"
+  }
+}

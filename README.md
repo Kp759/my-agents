@@ -1,66 +1,99 @@
 # My Agents
 
-An open-source, model-agnostic ecosystem of personal agents for PhD study.
-You can plug in any LLM provider (Claude, ChatGPT, local models, and others) and run a team of specialised agents.
+An open-source, **transparent** multi-agent system for PhD study, built with LangGraph. It runs on the AI subscriptions you already have (Claude, ChatGPT) and on free local models, with no API keys needed.
 
-## Planned agents
+The shared goal of every agent: help you become a strong candidate for a research role at Anthropic, by **teaching you how things work in depth** and **building your research depth**. It is also meant for learning how multi-agent systems work: every routing decision, prompt, tool call, delegation, cost and memory is visible.
 
-| Agent | Role |
-|---|---|
-| **Explainer** | Explains papers, concepts and code at the depth you ask for |
-| **Examiner** | Asks you questions to test your understanding (spaced repetition, viva prep) |
-| **Task Runner** | Works through your pending tasks |
-| **Experiment Tracker** | Logs experiments, configs, results and what to try next |
-| **PhD Tracker** | Tracks milestones, deadlines, meetings and overall progress |
-| **Literature Surveyor** | Searches, summarises and organises related work |
-| **Trend Scout** | Finds emerging research topics worth working on |
-| **Career Coach** | Finds the skill gaps between you and a target role (e.g. research at Anthropic) and builds a plan to close them |
+## The team
 
-## Design goals
-
-- **Model-agnostic**: one provider interface; you choose the model per agent.
-- **Composable**: every agent shares one interface, so new agents are easy to add.
-- **Shared memory**: agents read and write a common store (tasks, experiments, papers, notes).
-- **Local-first**: your data stays on your machine unless you choose otherwise.
-
-## How it works
-
-```
-you ──► router (local model) ──► chosen agent ──► reply
-               LangGraph graph; every call is traced to data/traces/*.jsonl
-```
-
-Agents run on **backends** that use tools you already have, so no API keys are needed:
-
-| Backend | What it calls | Who pays |
+| Agent | What it does | Runs on |
 |---|---|---|
-| `claude-cli` | `claude -p` (Claude Code, headless) | your Claude subscription |
-| `codex-cli` | `codex exec` (Codex CLI, signed in with ChatGPT) | your ChatGPT subscription |
-| `ollama` | a local model through Ollama | free |
+| **@orchestrator** | The main agent: plans multi-step requests and delegates to the others | Claude Sonnet |
+| **@explainer** | Explains concepts, papers and code in depth | Claude Sonnet |
+| **@examiner** | Quizzes you, grades your answers and tracks weak topics | Codex (ChatGPT) |
+| **@task_runner** | Manages your to-do list and drafts the deliverables | Claude Sonnet |
+| **@experiment_tracker** | Lab notebook: logs runs, compares them, suggests the next experiment | Claude Haiku |
+| **@phd_tracker** | Milestones, deadlines, advisor meetings, progress reviews | Claude Haiku |
+| **@lit_surveyor** | Searches arXiv/OpenAlex, summarises papers, keeps your reading list | Claude Sonnet |
+| **@trend_scout** | Finds rising research directions that fit you | Claude Sonnet |
+| **@career_coach** | Reads real Anthropic job posts and maps your skill gaps | Claude Sonnet |
+| **@coder** | Writes and edits code in your repos (with your approval) | Claude Sonnet |
+| **@reviewer** | Independent critic of code, experiments and drafts | Codex (ChatGPT) |
+| **@writer** | Paper sections, statements, emails; saves drafts | Claude Sonnet |
 
-Each agent is a YAML file in `agents/` that sets its backend, model and system prompt.
-To add an agent, copy `agents/_TEMPLATE.yaml`.
+The Coder and the Reviewer run on **different model families** on purpose, so the review catches different mistakes.
+
+## How a request flows
+
+```
+you ─► router (local Qwen3 8B, ~0.4 s, free) ─► agent ⇄ tools
+                                                  │ delegate ▲ result
+                                                  ▼          │
+                                               other agent ⇄ tools
+```
+
+1. **Route:** a small local model picks one agent. Multi-step requests go to the orchestrator. `@agent` skips routing.
+2. **Act:** the agent calls tools through a text protocol that works on every backend (a ReAct loop).
+3. **Delegate:** an agent can hand a self-contained sub-task to another agent and get the answer back, like a function call.
+4. **Ask:** risky actions pause the graph until you approve (LangGraph `interrupt`).
+5. **Remember:** each agent keeps long-term memory, and a shared profile carries over between sessions.
+6. **Trace:** every step's exact prompt, reply, tokens, latency and cost is recorded.
+
+The dashboard's **How it works** tab explains each concept and links it to the code.
 
 ## Quickstart
 
+Needs Python 3.11+, and any of: [Claude Code](https://claude.com/claude-code) (signed in), the [Codex CLI](https://github.com/openai/codex) (signed in with ChatGPT), or [Ollama](https://ollama.com) with `ollama pull qwen3:8b`.
+
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"
-.venv/bin/my-agents doctor            # which backends are reachable
-.venv/bin/my-agents agents            # list agents
-.venv/bin/my-agents ask "explain KL divergence"
-.venv/bin/my-agents ask -a examiner "quiz me on transformers"
-.venv/bin/my-agents chat              # multi-turn; type @examiner or @explainer to switch
+.venv/bin/my-agents doctor              # which backends are reachable
+.venv/bin/my-agents chat                # talk to the team; @writer, @coder… to pick an agent
+.venv/bin/my-agents ui                  # dashboard at http://127.0.0.1:8765
 ```
 
-Tests: `pytest` (offline, uses a fake backend) and `pytest -m live` (calls the real backends).
-
-## Status
-
-| Agent | Status |
+| Command | What it shows |
 |---|---|
-| Explainer | working (`claude-cli`, sonnet) |
-| Examiner | working (`codex-cli`) |
-| Others | planned |
+| `my-agents ask "…"` | One request, with every step live and its cost |
+| `my-agents chat [--thread NAME]` | Multi-turn chat; saved, resume with the same `--thread` |
+| `my-agents trace [ID]` | Replay a past request step by step |
+| `my-agents board -f` | Live feed of what every agent is working on |
+| `my-agents eod` | End-of-day report: what each agent did, how, and the cost |
+| `my-agents ui` | Dashboard: live board, step-by-step timelines with exact prompts, team topology, memory, EOD |
+| `my-agents agents` / `tools` | Agents, their tools and delegates; tools and their safety flags |
+
+## Configure
+
+- **Agents:** one YAML file each in `agents/` (backend, model, role prompt, tools, delegates). Copy `agents/_TEMPLATE.yaml` to add one.
+- **`config.yaml`:**
+  - `router.entry`: `router` (a cheap local router) or `orchestrator` (every message goes through the main agent).
+  - `mission`: the goal prepended to every agent's prompt.
+  - `eod`: which model writes the end-of-day prose.
+  - `pricing`: per-token prices, used to estimate cost for backends that don't report it.
+  - `security.allowed_roots`: the folders file and code tools may touch.
+
+**Cost:** Claude's CLI reports the API-equivalent price of each call. On a subscription you aren't billed this, but it's the right number for comparing designs. Codex reports tokens only.
+
+## Security
+
+Agents read untrusted text (papers, job posts, files), so the system defends against prompt injection with:
+- labelled untrusted content;
+- a taint gate: after reading outside content, every write needs your approval;
+- an egress allowlist;
+- a path policy that never exposes secrets;
+- secret redaction;
+- locked-down CLI backends;
+- a hardened local dashboard.
+
+See [docs/SECURITY.md](docs/SECURITY.md).
+
+## Develop
+
+```bash
+.venv/bin/pytest            # offline: graph, delegation, approvals, memory, security attacks
+.venv/bin/pytest -m live    # calls the real backends (uses a little quota)
+langgraph dev               # LangGraph Studio (pip install "langgraph-cli[inmem]")
+```
 
 ## License
 

@@ -55,15 +55,19 @@ class ClaudeCLIAdapter:
             raise AdapterError(f"claude error: {out.get('result') or out.get('subtype')}")
 
         usage = out.get("usage") or {}
+        models = list((out.get("modelUsage") or {}).keys())
         return Completion(
             text=out.get("result", ""),
             backend=self.name,
-            model=self.model,
+            model=models[0] if models else self.model,
             latency_ms=latency_ms,
             usage={
                 "input_tokens": usage.get("input_tokens", 0)
                 + usage.get("cache_creation_input_tokens", 0)
                 + usage.get("cache_read_input_tokens", 0),
+                "cached_input_tokens": usage.get("cache_read_input_tokens", 0),
                 "output_tokens": usage.get("output_tokens", 0),
+                # What the call would cost at API prices; on a subscription you are not billed this.
+                "cost_usd": out.get("total_cost_usd"),
             },
         )

@@ -8,3 +8,6 @@ model: sonnet                  # claude-cli: haiku/sonnet/opus; codex-cli: blank
 #   think: false               # ollama: skip the thinking phase of reasoning models
 system_prompt: |
   You are ...
+# tools: [list_tasks, add_task]  # optional; see `my-agents tools` for every tool
+# delegates: [reviewer]          # optional; agents this one may hand sub-tasks to
+# board_context: false           # optional; show recent board posts in the prompt

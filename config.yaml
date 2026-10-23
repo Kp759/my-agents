@@ -1,9 +1,44 @@
-# Which model picks the agent for each message.
-# A small local model is enough for routing and costs nothing.
-# Switch to `backend: claude-cli` with `model: haiku` if Ollama isn't running.
 router:
+  # entry: router       → a small local model picks an agent for each message (fast, free);
+  #                       multi-step requests go to the orchestrator.
+  # entry: orchestrator → every message goes to the orchestrator, which delegates.
+  entry: router
+  orchestrator: orchestrator
   backend: ollama
   model: qwen3:8b
   options:
     think: false             # Qwen3 thinks by default: ~11 s per route; off: ~0.4 s
-  default_agent: explainer   # used when the router's reply names no agent
+  default_agent: orchestrator   # used when the router's reply names no agent
+
+# Prepended to every agent's system prompt: the goal the whole team shares.
+mission: |
+  Shared mission: help the user, a PhD student, become a strong candidate for a research role at
+  Anthropic. Two things matter equally: deep understanding and research depth.
+  - Teach, don't just answer: explain the mechanism (why it works), connect it to fundamentals,
+    and say how you got your answer, so the user learns the method and not only the result.
+  - Build depth: point to the key papers, open problems and the questions an Anthropic interviewer
+    or reviewer would probe; suggest a small hands-on exercise when it helps.
+  - Be honest about uncertainty. Never invent facts, numbers or citations.
+  - Use your memory: build on what you know about the user and save what you learn about them
+    (level, goals, gaps, preferences) with `remember`, so every session builds on the last.
+
+# Who writes the prose of the end-of-day report (`my-agents eod`). Local = free.
+eod:
+  backend: ollama
+  model: qwen3:8b
+  options:
+    think: false
+
+# Optional: $ per 1M tokens, to estimate cost for backends that don't report it.
+# Claude's CLI reports cost itself. Keys are a model name or a backend name.
+# pricing:
+#   codex-cli: {input: 0.0, cached_input: 0.0, output: 0.0}
+pricing: {}
+
+# Guardrails (see docs/SECURITY.md).
+security:
+  # File and code tools only work under these folders. Secrets (.ssh, .env, keys,
+  # credential stores) are always blocked, even inside them.
+  allowed_roots:
+    - ~/Downloads
+    - ~/Documents

@@ -1,16 +1,16 @@
 """ChatGPT models through the official Codex CLI (`codex exec`), using your ChatGPT sign-in.
 
 Codex has no system-prompt flag, so the system prompt is prepended to the input.
-It runs read-only in an empty temp directory, and the final message is read from
-the file passed to `-o`.
+It runs read-only in an empty temp directory. `--json` streams events; the last
+agent message is the reply and `turn.completed` carries token usage (no price).
 """
 
 from __future__ import annotations
 
+import json
 import subprocess
 import tempfile
 import time
-from pathlib import Path
 
 from .base import AdapterError, Completion, Message, on_path, render_transcript
 
@@ -33,14 +33,16 @@ class CodexCLIAdapter:
         )
         start = time.monotonic()
         with tempfile.TemporaryDirectory() as cwd:
-            out_file = Path(cwd) / "last_message.txt"
             cmd = [
                 "codex", "exec",
                 "--ephemeral",
                 "--skip-git-repo-check",
                 "--sandbox", "read-only",
                 "--color", "never",
-                "-o", str(out_file),
+                "--json",
+                # a chat backend needs none of these; each widens what injected text could do
+                "--disable", "browser_use", "--disable", "browser_use_external",
+                "--disable", "computer_use", "--disable", "apps",
             ]
             if self.model:
                 cmd += ["--model", self.model]
@@ -52,13 +54,31 @@ class CodexCLIAdapter:
                 )
             except subprocess.TimeoutExpired as e:
                 raise AdapterError(f"codex timed out after {self.timeout}s") from e
-            if proc.returncode != 0 or not out_file.exists():
-                raise AdapterError(f"codex failed (exit {proc.returncode}): {proc.stderr[-500:]}")
-            text = out_file.read_text().strip()
+
+        text, usage, error = None, {}, None
+        for line in proc.stdout.splitlines():
+            try:
+                event = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            item = event.get("item") or {}
+            if event.get("type") == "item.completed" and item.get("type") == "agent_message":
+                text = item.get("text", "")
+            elif event.get("type") == "turn.completed":
+                usage = event.get("usage") or {}
+            elif event.get("type") in ("error", "turn.failed"):
+                error = event.get("message") or (event.get("error") or {}).get("message")
+        if proc.returncode != 0 or text is None:
+            raise AdapterError(f"codex failed (exit {proc.returncode}): {error or proc.stderr[-500:]}")
 
         return Completion(
-            text=text,
+            text=text.strip(),
             backend=self.name,
             model=self.model,
             latency_ms=int((time.monotonic() - start) * 1000),
+            usage={
+                "input_tokens": usage.get("input_tokens", 0),
+                "cached_input_tokens": usage.get("cached_input_tokens", 0),
+                "output_tokens": usage.get("output_tokens", 0) + usage.get("reasoning_output_tokens", 0),
+            },
         )
