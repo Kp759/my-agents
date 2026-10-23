@@ -132,3 +132,9 @@ class NullTracer(Tracer):
 
     def write_io(self, run_id: str, step_id: str, io: dict) -> None:
         self.io[step_id] = io
+
+    def run(self, run_id: str) -> list[dict]:
+        return [r for r in self.rows if r["run_id"] == run_id]
+
+    def last_run_id(self) -> str | None:
+        return self.rows[-1]["run_id"] if self.rows else None

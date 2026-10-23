@@ -10,6 +10,8 @@
     my-agents eod [--date D]         end-of-day report of what each agent did
     my-agents ui                     local dashboard: live board, every step, memory, costs
     my-agents tools                  list every tool and its safety flags
+    my-agents telegram setup         connect a Telegram bot (one time)
+    my-agents telegram               run the Telegram bot: chat and approve from your phone
 """
 
 from __future__ import annotations
@@ -264,6 +266,17 @@ def cmd_tools(_args) -> int:
     return 0
 
 
+def cmd_telegram(args) -> int:
+    from . import telegram
+
+    try:
+        telegram.setup() if args.action == "setup" else telegram.run()
+    except telegram.TelegramError as e:
+        print(f"telegram: {e}", file=sys.stderr)
+        return 1
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     owner = _config().get("owner") or "My"
     p = argparse.ArgumentParser(prog="my-agents", description=f"{owner}'s agents: a transparent multi-agent team.")
@@ -302,6 +315,9 @@ def main(argv: list[str] | None = None) -> int:
     ui.add_argument("--no-browser", action="store_true")
     ui.set_defaults(fn=cmd_ui)
     sub.add_parser("tools", help="list tools and their safety flags").set_defaults(fn=cmd_tools)
+    tg = sub.add_parser("telegram", help="chat with your agents from Telegram")
+    tg.add_argument("action", nargs="?", choices=["run", "setup"], default="run")
+    tg.set_defaults(fn=cmd_telegram)
 
     args = p.parse_args(argv)
     return args.fn(args)

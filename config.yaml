@@ -54,6 +54,11 @@ github:
     - Kp759/*
   clone_dir: ~/Downloads/agent-repos   # must be inside security.allowed_roots
 
+# Telegram (`my-agents telegram setup`, then `my-agents telegram`).
+telegram:
+  secrets_file: ~/.config/my-agents/telegram.env   # bot token + your user id; outside the repo, chmod 600
+  eod_time: "21:00"                                # send the end-of-day report at this local time; blank = off
+
 # Guardrails (see docs/SECURITY.md).
 security:
   # File and code tools only work under these folders. Secrets (.ssh, .env, keys,

@@ -30,7 +30,7 @@ from ..memory import AgentMemory
 from ..report import eod_facts, eod_report, row_cost, totals
 from ..store import Store
 from ..tracing import Tracer
-from .chat import ChatManager
+from ..chat import ChatManager
 
 INDEX = Path(__file__).with_name("index.html")
 TABLES = ("tasks", "experiments", "milestones", "papers", "skills", "quiz_results", "notes")

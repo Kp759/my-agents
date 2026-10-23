@@ -60,7 +60,19 @@ python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"
 | `my-agents board -f` | Live feed of what every agent is working on |
 | `my-agents eod` | End-of-day report: what each agent did, how, and the cost |
 | `my-agents ui` | **Chat with the agents in the browser** (approve actions there too), plus a live board, step-by-step timelines with exact prompts, team topology, memory and EOD |
+| `my-agents telegram` | The Telegram bot (run `telegram setup` once first) |
 | `my-agents agents` / `tools` | Agents, their tools and delegates; tools and their safety flags |
+
+## Telegram
+
+Chat with your agents from your phone, approve actions with buttons, and get the end-of-day report every evening.
+
+```bash
+.venv/bin/my-agents telegram setup   # one time: create a bot with @BotFather, paste its token, press Start
+.venv/bin/my-agents telegram         # keep this running (it only makes outbound connections)
+```
+
+In Telegram, just write; `@writer …` picks an agent. Commands: `/new`, `/status`, `/trace`, `/agents`, `/eod`, `/help`. The bot answers only your Telegram account. The token is stored in `~/.config/my-agents/telegram.env` (owner-only, outside the repo). Telegram bot chats are not end-to-end encrypted.
 
 ## GitHub
 

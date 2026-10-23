@@ -1,4 +1,4 @@
-"""Chat from the dashboard: runs the same LangGraph graph as `my-agents chat`.
+"""Chat engine shared by the dashboard and Telegram; the same graph as `my-agents chat`.
 
 Each message runs in a background thread so the page can poll for progress.
 When a tool needs approval, the run pauses (LangGraph interrupt) and the page
@@ -13,10 +13,10 @@ import threading
 import uuid
 from pathlib import Path
 
-from ..agents import load_agents, load_router_config
-from ..graph import build_graph
-from ..store import Store, now
-from ..tracing import Tracer
+from .agents import load_agents, load_router_config
+from .graph import build_graph
+from .store import Store, now
+from .tracing import Tracer
 
 
 class ChatManager:

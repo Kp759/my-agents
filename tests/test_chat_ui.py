@@ -10,7 +10,7 @@ from my_agents.agents import AgentSpec, RouterConfig
 from my_agents.graph import build_graph
 from my_agents.store import Store
 from my_agents.tracing import NullTracer
-from my_agents.ui.chat import ChatManager
+from my_agents.chat import ChatManager
 
 
 def call(tool, **args):
