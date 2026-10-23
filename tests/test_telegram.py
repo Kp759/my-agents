@@ -133,3 +133,16 @@ def test_network_errors_do_not_leak_the_token(monkeypatch):
 def test_bad_tokens_are_rejected():
     with pytest.raises(tg.TelegramError):
         tg.TelegramClient("not-a-token")
+
+
+def test_token_found_in_pasted_botfather_message():
+    message = f"Done! Congratulations on your new bot.\nUse this token to access the HTTP API:\n{TOKEN}\nKeep it safe."
+    assert tg.extract_token(message) == TOKEN
+    assert tg.extract_token(f"  {TOKEN}\n") == TOKEN
+    assert tg.extract_token("") is None and tg.extract_token(f"{TOKEN} {TOKEN[:-1]}X") is None
+
+
+def test_paste_problems_are_described_without_echoing_secrets():
+    for pasted in ["", "   ", "AAEkmjYGJQHdnCj_EtwuKR1mncqmz5r5xMs", "123:short"]:
+        text = tg._describe_paste(pasted)
+        assert pasted.strip() == "" or pasted.strip() not in text

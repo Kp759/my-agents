@@ -39,6 +39,7 @@ from .tracing import Tracer
 
 API = "https://api.telegram.org"
 TOKEN_RE = re.compile(r"^\d{5,}:[A-Za-z0-9_-]{30,}$")
+TOKEN_IN_TEXT = re.compile(r"\d{5,}:[A-Za-z0-9_-]{30,}")
 MAX_MESSAGE = 4000  # Telegram's limit is 4096 characters
 STALE_SECONDS = 600
 DEFAULT_SECRETS = "~/.config/my-agents/telegram.env"
@@ -76,6 +77,23 @@ def load_secrets() -> tuple[str, int]:
     if not TOKEN_RE.match(token) or not user.isdigit():
         raise TelegramError(f"{path} is incomplete: run `my-agents telegram setup` again")
     return token, int(user)
+
+
+def extract_token(pasted: str) -> str | None:
+    """Find a bot token in what was pasted: the token alone, or the whole BotFather message."""
+    found = TOKEN_IN_TEXT.findall(pasted)
+    return found[0] if len(found) == 1 else None
+
+
+def _describe_paste(pasted: str) -> str:
+    # Describe the problem without echoing anything that might be a secret.
+    if not pasted.strip():
+        return "nothing was pasted (the prompt stays blank while you paste; that's normal)"
+    if ":" not in pasted:
+        return f"got {len(pasted.strip())} characters with no ':'; a token looks like 1234567890:AAE…"
+    if len(TOKEN_IN_TEXT.findall(pasted)) > 1:
+        return "found more than one token; paste just the one from BotFather"
+    return f"got {len(pasted.strip())} characters but no valid token; copy the whole token line from BotFather"
 
 
 def save_secrets(token: str, user_id: int) -> Path:
@@ -407,9 +425,20 @@ def setup() -> None:
 2. Choose a name and a username ending in "bot".
 3. BotFather replies with a token like 123456789:AA…. Copy it.
 """)
-    token = getpass.getpass("Paste the bot token here (input is hidden): ").strip()
-    client = TelegramClient(token)
-    me = client.call("getMe")
+    for attempt in range(3):
+        pasted = getpass.getpass("Paste the bot token here (input is hidden, nothing will show), then Enter: ")
+        token = extract_token(pasted)
+        if not token:
+            print(f"  ✗ {_describe_paste(pasted)}. Try again.")
+            continue
+        client = TelegramClient(token)
+        try:
+            me = client.call("getMe")
+            break
+        except TelegramError as e:
+            print(f"  ✗ Telegram rejected that token ({e}). If you revoked it, use the new one. Try again.")
+    else:
+        raise TelegramError("no working token after 3 tries; run `my-agents telegram setup` again")
     print(f"\n✓ Token works: your bot is @{me['username']}.")
     print(f"\n4. Now open https://t.me/{me['username']} and press Start (or send /start).")
     print("   Waiting up to 3 minutes for your message…")
