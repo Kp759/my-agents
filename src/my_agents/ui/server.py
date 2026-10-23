@@ -25,6 +25,7 @@ from urllib.parse import parse_qs, urlparse
 import yaml
 
 from .. import bench, study
+from ..lab import run as lab
 from ..agents import DEFAULT_CONFIG, load_agents, load_router_config
 from ..board import Board
 from ..memory import AgentMemory
@@ -206,6 +207,12 @@ def make_handler(api: API):
                     return self._send(bench.load_run(m.group(1)))
                 if m := re.fullmatch(r"/api/bench/([\w-]+)/trial/([\w.-]+)", url.path):
                     return self._send(bench.trial_steps(m.group(1), m.group(2)))
+                if url.path == "/api/lab":
+                    return self._send(lab.list_runs())
+                if m := re.fullmatch(r"/api/lab/([\w-]+)", url.path):
+                    return self._send(lab.load_run(m.group(1)))
+                if m := re.fullmatch(r"/api/lab/([\w-]+)/trial/([\w.-]+)", url.path):
+                    return self._send(lab.trial_steps(m.group(1), m.group(2)))
                 if url.path == "/api/chat/threads":
                     return self._send(api.chat.threads())
                 if url.path == "/api/chat/new":

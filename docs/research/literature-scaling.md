@@ -49,12 +49,36 @@ controller of that kind would be incremental.
 | Consilience ([2608.20564](https://arxiv.org/abs/2608.20564), Aug 2026) | Calibrated control of *who speaks and how* in hidden-profile tasks (communication, not compute). |
 | Conformity: [2501.13381](https://arxiv.org/abs/2501.13381), [2505.21588](https://arxiv.org/abs/2505.21588), [2609.33495](https://arxiv.org/abs/2609.33495) | Agents conform to peers, and more to "their own" model family. |
 
-### Malicious agents (security, not compute)
-*Who's the Mole?* ([2507.04724](https://arxiv.org/abs/2507.04724)), SentinelNet ([2510.16219](https://arxiv.org/abs/2510.16219)),
-graph anomaly detection ([2512.18733](https://arxiv.org/abs/2512.18733)), Prompt Infection ([2410.07283](https://arxiv.org/abs/2410.07283)):
-these detect or contain bad agents, but none of them looks at **compute allocation**.
+### Malicious agents and Byzantine robustness (aggregation, not compute)
+- Detection: *Who's the Mole?* ([2507.04724](https://arxiv.org/abs/2507.04724)), SentinelNet ([2510.16219](https://arxiv.org/abs/2510.16219)),
+  graph anomaly detection ([2512.18733](https://arxiv.org/abs/2512.18733)); spread: Prompt Infection ([2410.07283](https://arxiv.org/abs/2410.07283)).
+- Byzantine-robust consensus: weighted BFT for multi-LLM networks ([2505.05103](https://arxiv.org/abs/2505.05103)),
+  *Rethinking the Reliability of Multi-agent System: A Perspective from Byzantine Fault Tolerance* ([2511.10400](https://arxiv.org/abs/2511.10400)),
+  *Resilient Consensus in Agentic AI* ([2606.15024](https://arxiv.org/abs/2606.15024)).
+- Persuasion: *When Persuasion Overrides Truth in Multi-Agent LLM Debates* ([2504.00374](https://arxiv.org/abs/2504.00374)),
+  *Learning to Persuade Exposes How Easily LLMs Abandon Correct Beliefs* ([2608.11624](https://arxiv.org/abs/2608.11624)).
+
+These ask *how agents reach a robust answer despite bad peers*. We ask a different layer: *how a
+budget-limited controller decides whether to spend more when the agents producing its stop signal may
+mislead it*. The controller itself is the attack surface.
+
+**Not verified** (cited by an outside summary, not found in our searches; find the source before citing):
+a method called "SAC" for Byzantine-robust message filtering, and a Nature paper reporting that one
+adversarial persuader reduces group accuracy and that more agents or rounds don't fix it.
 
 ## The gap
+
+Stated carefully (ECMR already targets "semantic false consensus", so we don't claim nobody has
+studied false consensus):
+
+> Existing adaptive deliberation controllers have been evaluated mainly with cooperative,
+> non-strategic agents. Their stopping and compute-allocation policies have not been systematically
+> stress-tested when the consensus signal is corrupted by latent information asymmetry or by
+> adversarial agents.
+
+ECMR is the closest paper: its controller tracks concentration, support diversity and independence,
+contradictions and budget, but it is evaluated on MedQA, CaseHOLD and FinQA with frozen cooperative
+roles, with no distributed private information and no adversarial or injected members. Read it first.
 
 Every adaptive controller above (HCP-MAD, iMAD, ATOM, ECMR) is evaluated with **honest agents
 and complete information**. They decide how much to spend from signals the agents themselves
@@ -70,6 +94,19 @@ settings the rest of the literature documents:
 We found no paper that evaluates adaptive compute controllers under either condition at matched
 compute. (The token-economics survey [2605.09104](https://arxiv.org/abs/2605.09104) names security as a
 dimension of token cost but doesn't run this experiment.)
+
+## Research questions
+
+- **RQ1, reliability:** how robust are adaptive compute controllers to latent information asymmetry?
+- **RQ2, security:** can one adversarial agent manipulate early stopping or escalation, to cause wrong
+  answers or to exhaust compute?
+- **RQ3, interaction:** is manipulation more effective when information is already split?
+- **RQ4, mitigation:** can evidence-coverage- and trust-aware stopping keep the efficiency of adaptive
+  allocation while cutting premature stops and compute amplification?
+
+Order matters: **first show that existing controllers break (RQ1–3), then design the fix from the traces
+(RQ4).** "We found a failure mode of adaptive multi-agent scaling" is the contribution; a better
+controller is the follow-up.
 
 ## Proposed study
 
@@ -95,8 +132,31 @@ consensus-escalation (HCP-MAD-style); evidence-aware (ECMR-lite); our robust var
 
 **Models**: Claude Haiku and Sonnet (subscription) plus local Qwen3 8B (free); heterogeneous mixes as a factor.
 
-**Metrics**: accuracy with Wilson CIs; spend per task and worst-case spend; premature-stop rate;
-spend inflation caused by the adversary; accuracy per dollar.
+**Design**: a 2×2 of information (full / split) × agents (honest / one adversary): E0 full-honest,
+E1 split-honest, E2 full-adversary, E3 split-adversary. This separates the effect of information
+asymmetry, the effect of the adversary, and their interaction.
+
+**Adversaries**: *premature stop* (fakes confident, "independently verified" agreement with the trap),
+*budget exhaustion* (never agrees, to force escalation), *withholding* (agrees and hides its decisive
+private facts: looks like genuine consensus, defeats outlier detection), and *injected* (an honest
+agent compromised by instructions inside a fact it reads, the realistic route via prompt injection).
+
+**Metrics** (controller-centred, not only accuracy):
+- unsafe stop rate: P(wrong | controller chose to stop);
+- premature stop rate: chose to stop before the surfaced evidence determined the answer;
+- coverage at stop: share of the private facts surfaced before stopping (hidden-profile tasks make this exact);
+- compute amplification: tokens with the adversary / tokens without it;
+- interaction: (E3 − E1) − (E2 − E0) in accuracy;
+- later: controller regret against an oracle that knows whether one more round would help, and budget waste.
+
+**Baselines still to add**: iMAD-style (self-critique trigger) and ATOM-style (difficulty-based agent
+count) simplified controllers; HiddenBench's structured-communication intervention; a Byzantine-robust
+aggregation baseline. Reviewers will ask "why not just make consensus Byzantine-robust?", so test it.
+
+**Implementation**: `src/my_agents/lab/` (`my-agents lab run`). Synthetic hidden-profile tasks
+(`lab/tasks.py`) put shared facts in favour of a distractor; the right answer needs the private facts
+of at least three members. First Qwen turn observed: with split information the agent cited only
+shared facts and none of its own private ones (spontaneous withholding), as HiddenBench reports.
 
 ## Risks and checks
 

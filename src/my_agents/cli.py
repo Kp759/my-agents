@@ -17,6 +17,8 @@
     my-agents study run quiz         run a study job now (digest, quiz, career…)
     my-agents bench run SUITE        benchmark team configurations on a task suite
     my-agents bench list | show RUN  past benchmark runs / one run's report
+    my-agents lab run [options]      the stop-signal study: can adaptive controllers trust agreement?
+    my-agents lab list | show RUN    past lab runs / one run's report
 """
 
 from __future__ import annotations
@@ -335,6 +337,29 @@ def cmd_bench(args) -> int:
     return 0
 
 
+def cmd_lab(args) -> int:
+    from .lab import run as lab
+
+    if args.action == "list":
+        for r in lab.list_runs():
+            print(f"  {r['id']}  {r['model']:<18} {r['adversary']:<18} {r['trials']:>4} trials  "
+                  f"{','.join(r['conditions'])}  {','.join(r['controllers'])}")
+        return 0
+    if args.action == "show":
+        print(lab.load_run(args.name)["report"])
+        return 0
+    conditions, names = args.conditions.split(","), args.controllers.split(",")
+    n = args.tasks * len(conditions) * len(names)
+    print(f"Stop-signal study: {n} trials ({args.tasks} tasks × {len(conditions)} conditions × {len(names)} controllers) "
+          f"on {args.model}, adversary {args.adversary}. Each trial makes 1 to about 12 model calls.")
+    if not args.yes and input("Run it? [y/N] ").strip().lower() != "y":
+        return 1
+    out = lab.run_study(conditions, names, args.adversary, args.tasks, args.model, args.budget or None, args.seed,
+                        args.adv_pos - 1, args.holders, args.workers, progress=print)
+    print("\n" + out["report"] + f"\nSaved to {out['dir']}")
+    return 0
+
+
 def cmd_telegram(args) -> int:
     from . import telegram
 
@@ -401,6 +426,24 @@ def main(argv: list[str] | None = None) -> int:
     bn.add_argument("--repeats", type=int, default=1, help="trials per config and task (more = tighter error bars)")
     bn.add_argument("-y", "--yes", action="store_true", help="don't ask before running")
     bn.set_defaults(fn=cmd_bench)
+
+    lb = sub.add_parser("lab", help="the stop-signal study (adaptive compute controllers under hidden profiles and adversaries)")
+    lb.add_argument("action", choices=["run", "list", "show"])
+    lb.add_argument("name", nargs="?", help="run id for `show`")
+    lb.add_argument("--conditions", default="E0,E1,E2,E3", help="E0 full/honest, E1 split/honest, E2 full/adversary, E3 split/adversary")
+    lb.add_argument("--controllers", default="single,vote4,consensus,evidence",
+                    help="single, oracle, vote3, vote4, debate3x2, debate4x2, consensus, evidence")
+    lb.add_argument("--adversary", default="premature_stop",
+                    help="premature_stop, budget_exhaustion, withholding, injected")
+    lb.add_argument("--model", default="ollama:qwen3:8b", help="ollama:qwen3:8b, claude:haiku, claude:sonnet or codex")
+    lb.add_argument("--tasks", type=int, default=10)
+    lb.add_argument("--budget", type=int, default=60_000, help="token budget per trial (0 = none)")
+    lb.add_argument("--seed", type=int, default=0)
+    lb.add_argument("--adv-pos", type=int, default=2, help="which member is the adversary (1-based)")
+    lb.add_argument("--holders", type=int, default=4, help="members holding private facts (3-8)")
+    lb.add_argument("--workers", type=int, default=1, help="parallel calls per round (use 1 for a local model)")
+    lb.add_argument("-y", "--yes", action="store_true")
+    lb.set_defaults(fn=cmd_lab)
 
     args = p.parse_args(argv)
     return args.fn(args)

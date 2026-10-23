@@ -119,7 +119,7 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 <script>
 const TABS = [
   ["chat", "Chat"], ["live", "Live"], ["requests", "Requests"], ["agents", "Agents"],
-  ["memory", "Memory"], ["study", "Study"], ["bench", "Bench"], ["eod", "End of day"], ["learn", "How it works"],
+  ["memory", "Memory"], ["study", "Study"], ["bench", "Bench"], ["lab", "Lab"], ["eod", "End of day"], ["learn", "How it works"],
 ];
 let tab = location.hash.slice(1) || "chat";
 let selectedRun = null;
@@ -147,7 +147,7 @@ function go(id) { tab = id; location.hash = id; renderTabs(); show(); }
 
 async function show() {
   clearInterval(timer);
-  const views = {chat, live, requests, agents, memory, study, bench, eod, learn};
+  const views = {chat, live, requests, agents, memory, study, bench, lab, eod, learn};
   await views[tab]();
   if (["chat", "live", "requests"].includes(tab)) timer = setInterval(() => views[tab](true), tab === "chat" ? 1200 : 2000);
 }
@@ -573,6 +573,46 @@ async function benchDetail() {
       <details><summary>report.md (paste into a write-up)</summary><pre>${esc(d.report)}</pre></details></div>${trial}`;
 }
 
+// ---------- lab: the stop-signal study ----------
+let labRun = null, labTrial = null;
+async function lab() {
+  const runs = await api("/api/lab");
+  if (!labRun && runs[0]) labRun = runs[0].id;
+  $("#view").innerHTML = `<div class="grid">
+    <div class="panel"><h2>Stop-signal study runs</h2>${runs.map((r) => `<div class="item ${r.id === labRun ? "on" : ""}"
+        onclick="labRun='${esc(r.id)}'; labTrial=null; lab()"><div><b>${esc(r.model)}</b> · ${esc(r.adversary)}</div>
+        <div class="small muted">${new Date(r.date).toLocaleString()} · ${r.trials} trials · ${esc(r.conditions.join(","))}</div></div>`).join("")
+      || `<div class="empty">No runs yet.</div>`}
+      <div class="small muted" style="margin-top:10px">Run one:<pre>my-agents lab run --tasks 4</pre>
+      Question and design: <code>docs/research/literature-scaling.md</code>. <i>Code: <code>lab/</code>.</i></div></div>
+    <div id="labdetail"></div></div>`;
+  if (labRun) await labDetail();
+}
+async function labDetail() {
+  const d = await api(`/api/lab/${labRun}`);
+  const trials = d.results.map((r) => `<tr><td>${esc(r.condition)}</td><td>${esc(r.controller)}</td><td>${esc(r.task)}</td>
+      <td class="${r.correct ? "ok" : "err"}">${r.correct ? "✓" : "✗"} ${esc(r.answer || "–")}${r.fooled ? " (trap)" : ""}</td>
+      <td>${esc(r.stop)}${r.premature_stop ? ' <span class="err">premature</span>' : ""}</td><td>${pct(r.coverage)}</td>
+      <td>${k(r.tokens)}</td><td><button class="btn" style="padding:2px 8px" onclick="labTrial='${esc(r.trial)}'; labDetail()">open</button></td></tr>`).join("");
+  let trial = "";
+  if (labTrial) {
+    const r = d.results.find((x) => x.trial === labTrial);
+    const steps = await api(`/api/lab/${labRun}/trial/${encodeURIComponent(labTrial)}`);
+    const turns = r.transcript.map((t) => `<div class="step" style="--lane:${t.adversary ? "var(--err)" : lane("m" + t.agent)}">
+        <div class="head"><span class="kind">round ${t.round}</span><b>member ${t.agent + 1}</b>${t.adversary ? ' <span class="err">adversary</span>' : ""}
+        <span>answer <b>${esc(t.answer || "–")}</b> · confidence ${t.confidence.toFixed(2)}</span><span class="meta">${k(t.tokens)} tok</span></div>
+        <div class="body small">${esc(t.message)}</div><div class="small muted">cited: ${esc(t.evidence.join(", ") || "nothing")}</div></div>`).join("");
+    trial = `<div class="panel" style="margin-top:20px"><h2>${esc(r.trial)}</h2>
+      <div class="small">truth <b>${esc(r.truth)}</b> · trap <b>${esc(r.distractor)}</b> · answered <b>${esc(r.answer || "–")}</b> ·
+        stop <b>${esc(r.stop)}</b> · coverage ${pct(r.coverage)} · ${r.calls} calls</div>
+      <h3 style="margin-top:12px">Transcript</h3>${turns}
+      <details><summary>exact prompts and replies (${steps.length} calls)</summary>${steps.map((x) => stepCard(x, x.io)).join("")}</details></div>`;
+  }
+  $("#labdetail").innerHTML = `<div class="panel"><div class="md">${md(d.report)}</div>
+      <h2 style="margin-top:18px">Trials</h2><div class="tablewrap"><table><tr><th>Cond.</th><th>Controller</th><th>Task</th>
+      <th>Answer</th><th>Stop</th><th>Coverage</th><th>Tokens</th><th></th></tr>${trials}</table></div></div>${trial}`;
+}
+
 async function eod() {
   const today = new Date().toLocaleDateString("en-CA");
   const day = $("#eodday")?.value || today;
@@ -638,6 +678,9 @@ function learn() {
   <h3>12. The study loop</h3>
   <p>Learning sticks with <b>spaced repetition</b>: each quiz score reschedules its topic (good answers push it further out, a weak one brings it back tomorrow). <code>my-agents study init</code> loads a multi-agent curriculum (10 modules, 23 checked readings, each with a hands-on exercise in this repository). The Telegram bot runs your routine from <code>config.yaml → study.schedule</code>: a morning digest of new papers, an evening quiz (your replies go to the Examiner until <code>/done</code>), and a weekly career check against live Anthropic job posts. See the <b>Study</b> tab. <i>Code: <code>study.py</code>.</i></p>
 
+
+  <h3>13. The stop-signal lab</h3>
+  <p>Adaptive multi-agent controllers save compute by stopping when agents agree and adding agents when they disagree. But agreement is produced by the agents themselves. The lab asks whether that signal can be trusted when information is split across agents (a <b>hidden profile</b>: shared facts favour a trap, the right answer needs several members' private facts) or when one member is adversarial or prompt-injected. It runs a 2×2 study (full/split information × honest/adversary) and measures what the controller did, not just the answer: unsafe stops, premature stops, how much private evidence had surfaced when it stopped, and how much extra compute an attacker caused. Open any trial to read the committee's discussion and every exact prompt. <i>Code: <code>lab/</code>; design in <code>docs/research/literature-scaling.md</code>.</i></p>
   </div>`;
 }
 

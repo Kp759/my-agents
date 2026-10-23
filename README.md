@@ -98,6 +98,27 @@ The system doubles as a testbed. `my-agents bench run SUITE` runs a suite of tas
 
 Results land in `data/bench/<run>/` with a `report.md` ready for a write-up. In the dashboard's **Bench** tab you can open every step of every trial. Suites are YAML in `bench/suites/`; add tasks and repeats to turn a pilot into a result.
 
+## Research: the stop-signal lab
+
+The current research question (see [docs/research/literature-scaling.md](docs/research/literature-scaling.md)):
+*can adaptive multi-agent compute controllers trust agreement?* Controllers like HCP-MAD stop when agents
+agree and add agents when they disagree, but agreement comes from the agents themselves. `my-agents lab run`
+tests that on synthetic **hidden-profile** tasks (shared facts favour a trap; the right answer needs the private
+facts of at least three members) in a 2×2 design (full or split information × honest team or one adversary).
+Adversaries can fake agreement (`premature_stop`), never agree (`budget_exhaustion`), hide their decisive facts
+(`withholding`), or be honest agents compromised by injected text (`injected`).
+
+```bash
+my-agents lab run --tasks 4                                  # pilot on local Qwen (free)
+my-agents lab run --model claude:haiku --adversary budget_exhaustion --workers 4
+my-agents lab list | show RUN
+```
+
+Besides accuracy it reports unsafe stops (wrong when the controller chose to stop), premature stops (stopped
+before the surfaced evidence determined the answer), coverage of private facts at stop, compute amplification
+caused by the adversary, and the information × adversary interaction. The dashboard's **Lab** tab shows every
+trial's discussion and every exact prompt.
+
 ## Up-to-date information
 
 Every model stops learning at its training cutoff, so agents never rely on memory for anything that changes. Each prompt starts with **today's date** and rules to look things up and cite sources with dates (`config.yaml → freshness`). The lookups are our own tools, so they work the same on Claude, Codex and the local Qwen:
