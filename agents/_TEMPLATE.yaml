@@ -1,0 +1,8 @@
+# Copy to agents/<name>.yaml. Files starting with "_" are ignored.
+name: my_agent                 # lowercase; you address it as @my_agent
+description: >-                # the router reads this to decide when to call the agent
+  One sentence on which requests this agent handles.
+backend: claude-cli            # claude-cli | codex-cli | ollama
+model: sonnet                  # claude-cli: haiku/sonnet/opus; codex-cli: blank = your default; ollama: a pulled model
+system_prompt: |
+  You are ...

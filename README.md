@@ -23,9 +23,44 @@ You can plug in any LLM provider (Claude, ChatGPT, local models, and others) and
 - **Shared memory**: agents read and write a common store (tasks, experiments, papers, notes).
 - **Local-first**: your data stays on your machine unless you choose otherwise.
 
+## How it works
+
+```
+you ──► router (local model) ──► chosen agent ──► reply
+               LangGraph graph; every call is traced to data/traces/*.jsonl
+```
+
+Agents run on **backends** that use tools you already have, so no API keys are needed:
+
+| Backend | What it calls | Who pays |
+|---|---|---|
+| `claude-cli` | `claude -p` (Claude Code, headless) | your Claude subscription |
+| `codex-cli` | `codex exec` (Codex CLI, signed in with ChatGPT) | your ChatGPT subscription |
+| `ollama` | a local model through Ollama | free |
+
+Each agent is a YAML file in `agents/` that sets its backend, model and system prompt.
+To add an agent, copy `agents/_TEMPLATE.yaml`.
+
+## Quickstart
+
+```bash
+python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"
+.venv/bin/my-agents doctor            # which backends are reachable
+.venv/bin/my-agents agents            # list agents
+.venv/bin/my-agents ask "explain KL divergence"
+.venv/bin/my-agents ask -a examiner "quiz me on transformers"
+.venv/bin/my-agents chat              # multi-turn; type @examiner or @explainer to switch
+```
+
+Tests: `pytest` (offline, uses a fake backend) and `pytest -m live` (calls the real backends).
+
 ## Status
 
-Early design. Nothing is implemented yet.
+| Agent | Status |
+|---|---|
+| Explainer | working (`claude-cli`, sonnet) |
+| Examiner | working (`codex-cli`) |
+| Others | planned |
 
 ## License
 

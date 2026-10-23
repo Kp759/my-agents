@@ -1,0 +1,7 @@
+# Which model picks the agent for each message.
+# A small local model is enough for routing and costs nothing.
+# Switch to `backend: claude-cli` with `model: haiku` if Ollama isn't running.
+router:
+  backend: ollama
+  model: gemma4:e4b
+  default_agent: explainer   # used when the router's reply names no agent
