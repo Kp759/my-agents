@@ -87,7 +87,7 @@ A daily routine that runs itself through Telegram (`config.yaml → study.schedu
 | 20:30 daily | Examiner | A 3-question quiz on the topic most due for review; just reply (your answers go to the Examiner until `/done`) |
 | Sun 18:00 | Career Coach | Current Anthropic roles, your top 3 gaps with this week's actions, and one mock interview question |
 
-Quiz scores drive **spaced repetition**: a good answer pushes a topic further out (1 day, 3 days, then longer), a weak one brings it back tomorrow. `my-agents study init` loads a curriculum for LLM multi-agent systems: 9 modules from agent foundations to MAS safety, 18 readings with checked links (Wooldridge, ReAct, AutoGen, CAMEL, Generative Agents, debate, Anthropic's agent posts, MAS failure modes, prompt infection, multi-agent risks), and a hands-on exercise in this repository for each. See the dashboard's **Study** tab.
+Quiz scores drive **spaced repetition**: a good answer pushes a topic further out (1 day, 3 days, then longer), a weak one brings it back tomorrow. `my-agents study init` loads a curriculum for LLM multi-agent systems: 10 modules from agent foundations to MAS safety plus one for your own research project, 23 readings with checked links (Wooldridge, ReAct, AutoGen, CAMEL, Generative Agents, debate, Anthropic's agent posts, MAS failure modes, prompt infection, multi-agent risks), and a hands-on exercise in this repository for each. See the dashboard's **Study** tab.
 
 ## Research: the benchmark harness
 

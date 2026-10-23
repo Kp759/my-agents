@@ -3,7 +3,7 @@
 # `my-agents study init` adds every module to your spaced-repetition reviews and every
 # reading to your reading list (tag: mas-core). The Examiner quizzes due modules; the
 # Trend Scout keeps you current beyond this list. Every link was checked against arXiv
-# or the live page on 2026-10-23. Add modules freely: same shape, any order.
+# or the live page on 2026-10-23. Research references: docs/research/. Add modules freely: same shape, any order.
 #
 # Each module: what to understand (objectives), what to read, and a hands-on exercise
 # that uses this repository, so you learn by building and measuring, not only reading.
@@ -22,6 +22,38 @@ modules:
     exercise: >-
       Our board (src/my_agents/board.py) is a blackboard. Read it and write one paragraph:
       what would a contract-net version of delegation look like here?
+
+  - topic: "Your research: compute-efficient and robust agent teams"
+    objectives:
+      - "State what Kim et al. found about scaling agent systems at matched compute (capability saturation, tool overhead)."
+      - "Explain why majority voting explains most of debate's gains (Choi et al.) and what that implies for baselines."
+      - "Describe how HCP-MAD uses consensus to stop early and escalate, and why that saves compute."
+      - "Define semantic false consensus (ECMR) and the hidden-profile failure (HiddenBench)."
+      - "Argue why consensus-based compute controllers could be gamed by one adversarial agent, and how you would test it."
+    readings:
+      - title: "Towards a Science of Scaling Agent Systems"
+        authors: Kim et al.
+        year: 2025
+        url: "https://arxiv.org/abs/2512.08296"
+      - title: "Debate or Vote: Which Yields Better Decisions in Multi-Agent Large Language Models?"
+        authors: Choi et al.
+        year: 2025
+        url: "https://arxiv.org/abs/2508.17536"
+      - title: "HCP-MAD: Heterogeneous Consensus-Progressive Reasoning for Efficient Multi-Agent Debate"
+        authors: HCP-MAD authors
+        year: 2026
+        url: "https://arxiv.org/abs/2604.09679"
+      - title: "ECMR: Evidence-Aware Deliberation Control for Multi-Agent LLM Reasoning"
+        authors: ECMR authors
+        year: 2026
+        url: "https://arxiv.org/abs/2610.17869"
+      - title: "Systematic Failures in Collective Reasoning under Distributed Information in Multi-Agent LLMs"
+        authors: Li et al.
+        year: 2025
+        url: "https://arxiv.org/abs/2505.11556"
+    exercise: >-
+      Read docs/research/literature-scaling.md, then write five sentences: the gap, your three
+      hypotheses in one line each, and the single result that would most surprise you.
 
   - topic: "Tool use and the ReAct loop"
     objectives:
