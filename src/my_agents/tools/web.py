@@ -5,6 +5,9 @@ papers, people or prices. These tools work the same with every backend (Claude, 
 Qwen), because they run here and not inside a model provider.
 
 web_search: DuckDuckGo first, Bing when DuckDuckGo refuses (it rate-limits). No keys.
+            By default it also opens the top results and returns the passages that match
+            the query ("deep" search), so even a small model that never thinks to call
+            web_fetch answers from the pages, not from 30-word snippets.
 tech_news:  Hacker News stories with dates and points, a fast signal of what is new.
 package_info: latest version and release dates of a PyPI or npm package.
 web_fetch:  read one public web page as text, with its publication date when it has one.
@@ -22,6 +25,7 @@ import re
 import socket
 import ssl
 import time
+from concurrent.futures import ThreadPoolExecutor, wait
 from html import unescape
 from html.parser import HTMLParser
 from urllib.parse import parse_qs, urljoin, urlparse
@@ -32,6 +36,11 @@ from .http import USER_AGENT, HTTPStatusError, get, get_json
 
 MAX_BYTES = 3_000_000  # read at most this much of a page
 PAGE_CHARS = 6_000  # text returned per web_fetch call; use `offset` to read on
+DEEP_PAGES = 3  # pages a deep search reads
+DEEP_CHARS = 1_000  # passage characters kept per page (tool results are capped at 8,000 in total)
+DEEP_TIMEOUT = 15  # seconds for all deep reads together
+STOPWORDS = set("the a an and or of to in on for with what which who when where how is are was were did does "
+                "do latest recent most new newest current about from by at as it its this that be".split())
 MAX_REDIRECTS = 5
 TEXT_TYPES = ("text/html", "text/plain", "text/markdown", "application/xhtml+xml", "application/json",
               "application/xml", "text/xml", "application/rss+xml", "application/atom+xml")
@@ -89,7 +98,51 @@ def _bing(query: str, recency: str | None) -> list[dict]:
     return out
 
 
-def web_search(query: str, limit: int = 8, recency: str | None = None) -> dict:
+def _passages(text: str, query: str, budget: int = DEEP_CHARS) -> str:
+    """The paragraphs that mention the most query words, kept in page order."""
+    terms = {w for w in re.findall(r"[a-z0-9][a-z0-9.+-]*", query.lower()) if w not in STOPWORDS and len(w) > 1}
+    paras = [p.strip() for p in re.split(r"\n+", text) if len(p.strip()) >= 40]
+    scored = sorted(((sum(t in p.lower() for t in terms), -i, p) for i, p in enumerate(paras)), reverse=True)
+    picked, used = [], 0
+    for score, neg_i, p in scored:
+        if score == 0 or used >= budget:
+            break
+        p = p[: budget - used]
+        picked.append((-neg_i, p))
+        used += len(p)
+    if not picked:  # nothing matched: the page's opening is the best guess
+        return text[:budget // 2].strip()
+    return "\n…\n".join(p for _, p in sorted(picked))
+
+
+def _deep_read(results: list[dict], query: str) -> tuple[list[dict], list[dict]]:
+    """Open the top results in parallel; return (pages, skipped) in result order."""
+    candidates = results[:DEEP_PAGES + 1]  # one spare in case a page fails
+    pool = ThreadPoolExecutor(max_workers=len(candidates))
+    futures = [pool.submit(_read, r["url"], 8) for r in candidates]
+    wait(futures, timeout=DEEP_TIMEOUT)
+    pool.shutdown(wait=False, cancel_futures=True)
+    pages, skipped = [], []
+    for r, f in zip(candidates, futures):
+        if len(pages) == DEEP_PAGES:
+            break
+        if not f.done():
+            skipped.append({"url": r["url"], "reason": "timed out"})
+            continue
+        try:
+            final, headers, title, dates, text, blocked = f.result()
+        except Exception as e:  # blocked address, HTTP error, binary file...
+            skipped.append({"url": r["url"], "reason": f"{type(e).__name__}: {e}"[:200]})
+            continue
+        if blocked:
+            skipped.append({"url": r["url"], "reason": "bot check or JavaScript-only page (not bypassed)"})
+            continue
+        pages.append({"url": final, "title": title or r["title"], "published": dates or None,
+                      "last_modified": headers.get("last-modified"), "passages": _passages(text, query)})
+    return pages, skipped
+
+
+def web_search(query: str, limit: int = 8, recency: str | None = None, deep: bool = True) -> dict:
     if recency not in (None, "", "day", "week", "month", "year"):
         raise ValueError("recency must be day, week, month or year")
     limit, errors = max(5, min(int(limit), 15)), []  # at least 5: one result is too easy to over-trust
@@ -100,9 +153,14 @@ def web_search(query: str, limit: int = 8, recency: str | None = None) -> dict:
             errors.append(f"{engine}: {e}")
             continue
         if results:
-            return {"engine": engine, "searched_at": time.strftime("%Y-%m-%d %H:%M %Z"),
-                    "results": results[:limit],
-                    "next": "Snippets can be stale or cut off: web_fetch the best 1-3 results before answering."}
+            out = {"engine": engine, "searched_at": time.strftime("%Y-%m-%d %H:%M %Z"), "results": results[:limit]}
+            if deep and str(deep).lower() != "false":
+                out["pages"], out["skipped"] = _deep_read(results, query)
+                out["next"] = ("Answer from `pages` (text read from the top results just now), citing their URLs "
+                               "and dates. web_fetch a page if you need more of it.")
+            else:
+                out["next"] = "Snippets can be stale or cut off: web_fetch the best 1-3 results before answering."
+            return out
         errors.append(f"{engine}: no results (or a bot check, which we never try to bypass)")
     raise RuntimeError("web search failed: " + "; ".join(errors) +
                        ". Try tech_news, search_papers or github_search_repos, or web_fetch a known URL.")
@@ -234,8 +292,9 @@ class _Readable(HTMLParser):
         return re.sub(r"\n{3,}", "\n\n", "\n".join(lines)).strip()
 
 
-def web_fetch(url: str, offset: int = 0) -> dict:
-    final, headers, body = _download(url.strip())
+def _read(url: str, timeout: int = 20) -> tuple[str, dict, str, dict, str, bool]:
+    """Download a page; return (final url, headers, title, dates, text, looks_like_a_bot_check)."""
+    final, headers, body = _download(url.strip(), timeout=timeout)
     ctype = headers.get("content-type", "").split(";")[0].strip().lower()
     if ctype and ctype not in TEXT_TYPES:
         raise ValueError(f"not a text page ({ctype}); for papers use search_papers, for PDFs ask the user")
@@ -248,8 +307,13 @@ def web_fetch(url: str, offset: int = 0) -> dict:
         text, title, dates = page.text(), re.sub(r"\s+", " ", page.title).strip(), page.dates
     else:
         text = raw
-    blocked = len(text) < 800 and re.search(r"(?i)javascript|challenge|captcha|verify you are human|couldn.t load",
-                                            f"{title} {text}")
+    blocked = bool(len(text) < 800 and re.search(
+        r"(?i)javascript|challenge|captcha|verify you are human|couldn.t load", f"{title} {text}"))
+    return final, headers, title, dates, text, blocked
+
+
+def web_fetch(url: str, offset: int = 0) -> dict:
+    final, headers, title, dates, text, blocked = _read(url)
     offset = max(0, int(offset))
     chunk = text[offset:offset + PAGE_CHARS]
     more = offset + PAGE_CHARS < len(text)
@@ -269,9 +333,11 @@ def web_fetch(url: str, offset: int = 0) -> dict:
 def tools() -> list[Tool]:
     return [
         Tool("web_search", "Search the web for current information (releases, docs, news, people, events, "
-             "deadlines). Returns titles, URLs and snippets; web_fetch the best results before relying on them.",
+             "deadlines). Returns results with snippets, and also reads the top pages and returns the passages "
+             "that match your query, with their dates.",
              {"query": "str", "limit": "int, max 15, optional",
-              "recency": "str, day | week | month | year, optional; restrict to recent pages"},
+              "recency": "str, day | week | month | year, optional; restrict to recent pages",
+              "deep": "bool, default true; false = snippets only (faster)"},
              web_search, untrusted=True),
         Tool("tech_news", "Recent tech news from Hacker News, with dates and points: what people are "
              "discussing about a model, library, company or paper.",

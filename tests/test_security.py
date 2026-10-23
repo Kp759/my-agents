@@ -406,3 +406,12 @@ def test_web_tools_are_flagged_correctly():
         assert box[name].untrusted and not box[name].writes, name
     assert box["web_fetch"].egress
     assert not any(t.egress for n, t in box.items() if n != "web_fetch")
+
+
+def test_deep_search_never_opens_non_public_result_urls(monkeypatch):
+    # A search engine (or a poisoned result) pointing at your machine or network must not be read.
+    from my_agents.tools import web
+    links = '<div class="result "><a class="result__a" href="https://127.0.0.1/admin">x</a></div>'
+    monkeypatch.setattr(web, "get", lambda url, params=None: links.encode())
+    out = web.web_search("router admin page")
+    assert out["pages"] == [] and "non-public" in out["skipped"][0]["reason"]

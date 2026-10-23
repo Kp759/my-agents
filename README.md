@@ -80,7 +80,7 @@ Every model stops learning at its training cutoff, so agents never rely on memor
 
 | Tool | Source |
 |---|---|
-| `web_search` | DuckDuckGo, with Bing as the fallback (no keys); `recency: day/week/month/year` |
+| `web_search` | DuckDuckGo, with Bing as the fallback (no keys); `recency: day/week/month/year`. By default it also reads the top 3 pages and returns the passages that match the query (`deep: false` for snippets only), so even a small local model answers from real pages |
 | `web_fetch` | Any public web page as text, with its publication date |
 | `tech_news` | Hacker News stories with dates and points |
 | `package_info` | Latest version and release dates from PyPI or npm |

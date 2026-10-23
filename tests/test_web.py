@@ -33,7 +33,7 @@ BING = f"""
 
 def test_duckduckgo_results_are_parsed_and_ads_skipped(monkeypatch):
     monkeypatch.setattr(web, "get", lambda url, params=None: DDG.encode())
-    out = web.web_search("langgraph release")
+    out = web.web_search("langgraph release", deep=False)
     assert out["engine"] == "duckduckgo"
     assert out["results"] == [{"title": "Releases · langgraph", "url": "https://github.com/langchain-ai/langgraph/releases",
                                "snippet": "Latest: 1.2.16 released 3 days ago"}]
@@ -47,7 +47,7 @@ def test_bing_is_the_fallback_when_duckduckgo_refuses(monkeypatch):
         return BING.encode()
 
     monkeypatch.setattr(web, "get", fake_get)
-    out = web.web_search("langgraph", recency="week")
+    out = web.web_search("langgraph", recency="week", deep=False)
     assert out["engine"] == "bing"
     assert out["results"][0] == {"title": "LangGraph overview", "url": BING_TARGET, "snippet": "Build stateful agents."}
 
@@ -62,12 +62,62 @@ def test_search_failure_explains_alternatives(monkeypatch):
         raise AssertionError("expected a failure")
 
 
+def deep_search(monkeypatch, pages):
+    """web_search with DuckDuckGo results for `pages` (url -> (content-type, body or exception))."""
+    links = "".join(f'<div class="result "><a class="result__a" href="{u}">T{i}</a></div>' for i, u in enumerate(pages))
+    monkeypatch.setattr(web, "get", lambda url, params=None: links.encode())
+
+    def download(url, timeout=20):
+        ctype, body = pages[url]
+        if isinstance(body, Exception):
+            raise body
+        return url, {"content-type": ctype}, body
+
+    monkeypatch.setattr(web, "_download", download)
+    return web.web_search("langgraph durable execution release")
+
+
+def test_deep_search_returns_matching_passages_from_the_top_pages(monkeypatch):
+    page = (b"<html><head><title>Notes</title><meta name=date content=2026-10-16></head><body>"
+            b"<p>Cookie banner text that is long enough to count as a paragraph here.</p>"
+            b"<p>LangGraph 1.2 adds durable execution, so runs survive restarts.</p></body></html>")
+    out = deep_search(monkeypatch, {"https://a.example/notes": ("text/html", page)})
+    [p] = out["pages"]
+    assert p["url"] == "https://a.example/notes" and p["published"] == {"date": "2026-10-16"}
+    assert p["passages"] == "LangGraph 1.2 adds durable execution, so runs survive restarts."  # banner dropped
+    assert "Answer from `pages`" in out["next"]
+
+
+def test_deep_search_skips_failures_and_bot_checks_and_stops_at_three(monkeypatch):
+    ok = ("text/plain", b"LangGraph release notes: durable execution is now stable in this release.")
+    out = deep_search(monkeypatch, {
+        "https://blocked.example/": ("text/html", b"<title>Client Challenge</title><p>Enable JavaScript</p>"),
+        "https://down.example/": ("text/html", HTTPStatusError(503, "https://down.example/")),
+        "https://a.example/": ok, "https://b.example/": ok, "https://c.example/": ok,
+    })
+    assert [p["url"] for p in out["pages"]] == ["https://a.example/", "https://b.example/"]  # 4 tried: 3 pages + 1 spare
+    reasons = {s["url"]: s["reason"] for s in out["skipped"]}
+    assert "bot check" in reasons["https://blocked.example/"] and "503" in reasons["https://down.example/"]
+
+
+def test_snippets_only_when_deep_is_off(monkeypatch):
+    def no_download(*a, **k):
+        raise AssertionError("deep=False must not open pages")
+    monkeypatch.setattr(web, "_download", no_download)
+    monkeypatch.setattr(web, "get", lambda url, params=None: DDG.encode())
+    assert "pages" not in web.web_search("x", deep=False)
+
+
+def test_passages_fall_back_to_the_page_opening():
+    assert web._passages("Nothing relevant here at all in this rather long paragraph.", "quantum") .startswith("Nothing")
+
+
 def test_pages_become_readable_text_with_dates(monkeypatch):
     html = b"""<html><head><title>Release notes</title>
       <meta property="article:published_time" content="2026-10-16T00:00:00Z"><script>var x=1</script></head>
       <body><nav>Home | Docs</nav><h1>v1.2</h1><p>Adds   durable
       execution.</p><footer>(c) site</footer></body></html>"""
-    monkeypatch.setattr(web, "_download", lambda url: (url, {"content-type": "text/html; charset=utf-8"}, html))
+    monkeypatch.setattr(web, "_download", lambda url, timeout=20: (url, {"content-type": "text/html; charset=utf-8"}, html))
     page = web.web_fetch("https://example.org/notes")
     assert page["title"] == "Release notes"
     assert page["published"] == {"article:published_time": "2026-10-16T00:00:00Z"}
@@ -77,14 +127,14 @@ def test_pages_become_readable_text_with_dates(monkeypatch):
 
 def test_long_pages_come_in_parts(monkeypatch):
     body = ("word " * 2000).encode()  # 10,000 chars: two parts
-    monkeypatch.setattr(web, "_download", lambda url: (url, {"content-type": "text/plain"}, body))
+    monkeypatch.setattr(web, "_download", lambda url, timeout=20: (url, {"content-type": "text/plain"}, body))
     first = web.web_fetch("https://example.org/long")
     second = web.web_fetch("https://example.org/long", offset=first["next_offset"])
     assert len(first["text"]) == web.PAGE_CHARS and second["next_offset"] is None
 
 
 def test_binary_files_are_refused(monkeypatch):
-    monkeypatch.setattr(web, "_download", lambda url: (url, {"content-type": "application/pdf"}, b"%PDF"))
+    monkeypatch.setattr(web, "_download", lambda url, timeout=20: (url, {"content-type": "application/pdf"}, b"%PDF"))
     try:
         web.web_fetch("https://example.org/paper.pdf")
     except ValueError as e:
