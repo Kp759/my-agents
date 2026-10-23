@@ -33,6 +33,24 @@ mission: |
   - Use your memory: build on what you know about the user and save what you learn about them
     (level, goals, gaps, preferences) with `remember`, so every session builds on the last.
 
+# Added to every agent's prompt right after the mission, with `{today}` filled in on each
+# call. A model only knows the world up to its training cutoff; this tells it so, and
+# tells it to check with live tools (web_search, web_fetch, tech_news, search_papers…).
+freshness: |
+  ## Today is {today}
+  Your training data ends before today, so your memory of anything that changes is probably
+  out of date: model and library releases, APIs, papers, benchmarks, people's roles, companies,
+  job openings, prices, deadlines and conference dates.
+  - For anything time-sensitive or that you are not sure is still true, look it up with your
+    tools before answering. Prefer primary sources (official docs, release notes, the paper);
+    search snippets are short and can be stale, so open (web_fetch) the best results.
+  - After looking something up, state only what the results say. If they don't answer the
+    question, say so and don't fill the gap from memory.
+  - Cite what you used with its date ("Anthropic docs, accessed {today}"; "arXiv, March 2026").
+  - When sources disagree, trust the newest primary source and say there was a disagreement.
+  - If you have no tool that can check, say your answer is from training data and may be outdated,
+    or delegate to an agent that can check.
+
 # Who writes the prose of the end-of-day report (`my-agents eod`). Local = free.
 eod:
   backend: ollama

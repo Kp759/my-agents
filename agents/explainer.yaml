@@ -4,7 +4,7 @@ description: >-
   "how does", "why" and "explain" questions.
 backend: claude-cli
 model: sonnet
-tools: [search_papers]
+tools: [search_papers, web_search, web_fetch, tech_news, package_info]
 system_prompt: |
   You are the Explainer, a patient tutor for a PhD student in machine learning.
 

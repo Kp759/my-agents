@@ -1,6 +1,8 @@
 """Security guardrails. See docs/SECURITY.md for the threat model.
 
-1. Egress allowlist: tools may only call these HTTPS hosts.
+1. Egress allowlist: tools may only call these HTTPS hosts. The one exception is
+   `web_fetch`, which may read any *public* HTTPS address (`check_public_url`) and is
+   gated in graph.py so it cannot quietly carry data out after untrusted content.
 2. Path policy: file tools only touch paths under `security.allowed_roots`
    (config.yaml), never secrets (.ssh, .env, keys, credential stores...).
 3. Redaction: anything that looks like a secret is masked before a model sees it.
@@ -14,8 +16,10 @@
 from __future__ import annotations
 
 import fnmatch
+import ipaddress
 import os
 import re
+import socket
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -26,6 +30,11 @@ ALLOWED_HOSTS = {
     "api.openalex.org",
     "huggingface.co",
     "boards-api.greenhouse.io",
+    "html.duckduckgo.com",  # web_search
+    "www.bing.com",  # web_search fallback
+    "hn.algolia.com",  # tech_news
+    "pypi.org",  # package_info
+    "registry.npmjs.org",  # package_info
 }
 
 # Never readable or editable by agents, wherever they are.
@@ -66,6 +75,33 @@ def check_url(url: str) -> None:
         raise GuardrailError(f"blocked: only https is allowed ({url.split('?')[0]})")
     if u.hostname not in ALLOWED_HOSTS:
         raise GuardrailError(f"blocked: {u.hostname} is not on the egress allowlist {sorted(ALLOWED_HOSTS)}")
+
+
+def check_public_url(url: str) -> tuple[str, str]:
+    """For web_fetch: any https host, as long as every address it resolves to is public.
+
+    Blocks localhost, private networks, link-local and cloud metadata (SSRF). Returns
+    (host, ip); the caller connects to that exact ip so DNS cannot change in between.
+    """
+    u = urlparse(url)
+    if u.scheme != "https":
+        raise GuardrailError(f"blocked: only https is allowed ({url.split('?')[0]})")
+    if not u.hostname or u.username or u.password:
+        raise GuardrailError("blocked: URL needs a host and must not contain a username or password")
+    if u.port not in (None, 443):
+        raise GuardrailError(f"blocked: only the standard https port is allowed, not {u.port}")
+    try:
+        infos = socket.getaddrinfo(u.hostname, 443, type=socket.SOCK_STREAM)
+    except socket.gaierror as e:
+        raise GuardrailError(f"cannot resolve {u.hostname}: {e}") from e
+    ips = sorted({info[4][0] for info in infos})
+    for ip in ips:
+        addr = ipaddress.ip_address(ip.split("%")[0])
+        if addr.version == 6 and addr.ipv4_mapped:
+            addr = addr.ipv4_mapped
+        if not addr.is_global or addr.is_multicast:
+            raise GuardrailError(f"blocked: {u.hostname} resolves to a non-public address ({addr})")
+    return u.hostname, ips[0]
 
 
 # ---- files --------------------------------------------------------------------------

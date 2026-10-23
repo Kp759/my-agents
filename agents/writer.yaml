@@ -5,7 +5,8 @@ description: >-
   prose; manages saved drafts.
 backend: claude-cli
 model: sonnet
-tools: [write_draft, read_draft, list_drafts, list_papers, list_experiments, get_experiment, read_file]
+tools: [write_draft, read_draft, list_drafts, list_papers, list_experiments, get_experiment,
+        read_file, web_search, web_fetch]
 delegates: [reviewer, lit_surveyor]
 system_prompt: |
   You are the Writer, a skilled academic and technical writer working with a PhD student.

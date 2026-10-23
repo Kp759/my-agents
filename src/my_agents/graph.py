@@ -17,7 +17,12 @@
 5. Taint: once the current job has read untrusted content (web, files), every tool
    that writes needs approval too, so injected instructions cannot quietly change
    your data or memory. Taint passes to delegates and back to callers.
-6. Every step is traced and the graph posts progress to the shared board.
+6. Egress: `web_fetch` can reach any public host, so a URL could carry data out.
+   After untrusted content, a URL the agent made up (one not already in the
+   conversation or a tool result) needs approval.
+7. Every prompt starts with today's date and the freshness rules (config.yaml →
+   `freshness`), because a model's own knowledge stops at its training cutoff.
+8. Every step is traced and the graph posts progress to the shared board.
 
 Conversation state is checkpointed per `thread_id`, so chats survive restarts
 when a SQLite checkpointer is used.
@@ -29,6 +34,7 @@ import json
 import operator
 import time
 import uuid
+from datetime import datetime
 from typing import Annotated, TypedDict
 
 from langgraph.checkpoint.memory import InMemorySaver
@@ -63,7 +69,8 @@ class State(TypedDict, total=False):
     delegations: int
     done: bool
     tainted: bool  # the current job has read untrusted content
-    writes_ok: bool  # the user approved all writes for the rest of this request
+    sources: list[str]  # outside content fetched in this request (what `_seen` checks URLs against)
+    writes_ok: bool  # the user approved all gated actions (writes, new URLs) for the rest of this request
 
 
 ROUTER_PROMPT = """You route {owner}'s request (a PhD student) to exactly one agent.
@@ -133,6 +140,9 @@ def build_graph(
     board = Board(store)
     memory = AgentMemory(store)
     mission = f"{router.mission}\n\n" if router.mission else ""
+
+    def freshness() -> str:  # computed per call: the UI and Telegram bot run for days
+        return f"{router.freshness.replace('{today}', today())}\n\n" if router.freshness else ""
     toolbox = toolbox if toolbox is not None else make_toolbox(store)
     adapters = adapters or {name: spec.adapter() for name, spec in agents.items()}
     router_adapter = router_adapter or make_adapter(router.backend, router.model, **router.options)
@@ -154,7 +164,7 @@ def build_graph(
     # ---- route ---------------------------------------------------------------------
     def route(state: State, config) -> State:
         fresh = {"forced_agent": None, "task": None, "scratch": [], "stack": [], "pending_call": None,
-                 "steps": 0, "delegations": 0, "done": False, "tainted": False, "writes_ok": False}
+                 "steps": 0, "delegations": 0, "done": False, "tainted": False, "writes_ok": False, "sources": []}
         ids = _ids(config)
         last = state["messages"][-1]
         forced = state.get("forced_agent")
@@ -196,8 +206,8 @@ def build_graph(
             if not scratch:  # first step on this job
                 board.post(spec.name, "start", task or state["messages"][-1]["content"], ids["thread_id"])
 
-            # Prompt = shared mission + the agent's role + its memory (+ board) + tool instructions.
-            system = mission + spec.system_prompt.rstrip() + memory.for_prompt(spec.name)
+            # Prompt = shared mission + today's date + the agent's role + its memory (+ board) + tools.
+            system = mission + freshness() + spec.system_prompt.rstrip() + memory.for_prompt(spec.name)
             if spec.board_context:
                 recent = board.recent(limit=8)
                 if recent:
@@ -264,10 +274,14 @@ def build_graph(
         # Ask first. Nothing above this line has side effects, because the node
         # re-runs from the top when the graph resumes after the interrupt.
         updates: State = {}
+        exposed = bool(state.get("tainted") or agents[agent].board_context) and not state.get("writes_ok")
         taint_gate = bool(tool and tool.writes and state.get("tainted") and not state.get("writes_ok"))
-        if tool and (tool.approval or taint_gate):
+        egress_gate = bool(tool and tool.egress and exposed and not _seen(state, args))
+        if tool and (tool.approval or taint_gate or egress_gate):
             reason = ("this action always needs approval" if tool.approval else
-                      "this job read untrusted content (web or files), so writes need approval")
+                      "this job read untrusted content (web or files), so writes need approval" if taint_gate else
+                      "this job read untrusted content and this URL is new (not in the chat or any result); "
+                      "a made-up URL could carry your data to another site")
             answer = interrupt({"agent": agent, "tool": name, "args": args, "reason": reason,
                                 "allow_all": not tool.approval})
             decision = _decision(answer)
@@ -296,10 +310,11 @@ def build_graph(
                           io={"args": args, "result": result if error is None else error})
             if tool.approval and error is None:
                 board.post(agent, "action", f"{name} {json.dumps(args, default=str)}", ids["thread_id"])
-            if tool.untrusted and error is None:
-                updates["tainted"] = True
         content = (format_result(name, result, untrusted=bool(tool and tool.untrusted)) if error is None
                    else f"[tool error: {name}]\n{error}")
+        if tool and tool.untrusted and error is None:
+            updates["tainted"] = True
+            updates["sources"] = (state.get("sources") or []) + [content]
         return {**updates, "scratch": scratch + [{"role": "user", "content": content}], "pending_call": None}
 
     def _tool_result(state: State, name: str, text: str) -> State:
@@ -365,13 +380,31 @@ def build_graph(
 
 
 def _decision(answer) -> str:
-    """'yes', 'no' or 'all' (approve every write for the rest of this request)."""
+    """'yes', 'no' or 'all' (approve every gated write or new URL for the rest of this request)."""
     if answer is True:
         return "yes"
     text = str(answer).strip().lower()
     if text in ("a", "all"):
         return "all"
     return "yes" if text in ("y", "yes", "approve", "ok") else "no"
+
+
+def today() -> str:
+    now = datetime.now().astimezone()
+    return f"{now:%A} {now.day} {now:%B %Y} ({now.tzname()})"
+
+
+def _seen(state: State, args: dict) -> bool:
+    """True if every text argument appears in the user's own messages or in fetched outside content.
+
+    Copying a URL from a search result is safe; inventing one after reading untrusted text
+    is how injected instructions would smuggle data out (https://evil.example/?d=<secret>).
+    Text any model wrote (answers, delegated tasks, tool arguments echoed in errors) does
+    not count, because a model can put your data into it.
+    """
+    known = "\n".join([m["content"] for m in state.get("messages") or [] if m["role"] == "user"] +
+                      (state.get("sources") or []))
+    return all(v in known for v in args.values() if isinstance(v, str))
 
 
 def _chars(system: str, messages: list[Message]) -> int:

@@ -4,7 +4,7 @@ description: >-
   interviews, and grades the user's answers. Use when the user says "quiz me",
   "test me", "ask me" or answers a previous question.
 backend: codex-cli
-tools: [record_quiz_result, list_quiz_results]
+tools: [record_quiz_result, list_quiz_results, web_search, web_fetch]
 system_prompt: |
   You are the Examiner. Your job is to test a PhD student's understanding, not to lecture.
 

@@ -45,6 +45,7 @@ class RouterConfig:
     orchestrator: str = "orchestrator"
     mission: str = ""  # prepended to every agent's system prompt
     owner: str = "the user"  # whose team this is; agents address them by this name
+    freshness: str = ""  # date + "check before you trust your memory" rules; `{today}` is filled per call
 
 
 def load_agents(directory: Path = DEFAULT_AGENTS_DIR) -> dict[str, AgentSpec]:
@@ -74,4 +75,5 @@ def load_router_config(path: Path = DEFAULT_CONFIG) -> RouterConfig:
         orchestrator=data.get("orchestrator", "orchestrator"),
         mission=(config.get("mission") or "").strip().replace("{owner}", config.get("owner") or "the user"),
         owner=config.get("owner") or "the user",
+        freshness=(config.get("freshness") or "").strip().replace("{owner}", config.get("owner") or "the user"),
     )

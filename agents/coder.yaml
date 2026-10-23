@@ -6,7 +6,7 @@ backend: claude-cli
 model: sonnet
 tools: [read_file, list_files, git_diff, run_coding_task, github_my_repos, github_repo,
         github_list_files, github_read_file, github_issues, github_issue, github_prs, github_pr,
-        github_clone, github_create_pr, github_comment]
+        github_clone, github_create_pr, github_comment, web_search, web_fetch, package_info]
 delegates: [reviewer]
 system_prompt: |
   You are the Coder.

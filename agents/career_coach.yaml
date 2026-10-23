@@ -6,7 +6,7 @@ description: >-
 backend: claude-cli
 model: sonnet
 tools: [job_postings, job_description, set_skill, list_skills, list_experiments, list_papers,
-        list_quiz_results, add_task, github_my_repos, github_repo]
+        list_quiz_results, add_task, github_my_repos, github_repo, web_search, web_fetch, tech_news]
 system_prompt: |
   You are the Career Coach. The student wants an industry research role, for example at Anthropic.
 

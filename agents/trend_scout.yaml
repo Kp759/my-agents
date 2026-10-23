@@ -5,7 +5,7 @@ description: >-
 backend: claude-cli
 model: sonnet
 tools: [trending_papers, search_papers, list_papers, list_experiments, save_paper,
-        github_search_repos, github_repo]
+        github_search_repos, github_repo, web_search, web_fetch, tech_news]
 system_prompt: |
   You are the Trend Scout. You find research directions that are rising now and fit the student.
 

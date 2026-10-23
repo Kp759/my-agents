@@ -340,7 +340,7 @@ class TelegramBot:
             buttons = [[{"text": "✅ Allow", "callback_data": f"ap|{rid[:16]}|yes"},
                         {"text": "❌ Deny", "callback_data": f"ap|{rid[:16]}|no"}]]
             if a.get("allow_all"):
-                buttons.append([{"text": "Allow all writes for this request", "callback_data": f"ap|{rid[:16]}|all"}])
+                buttons.append([{"text": "Allow all for this request", "callback_data": f"ap|{rid[:16]}|all"}])
             self.reply(f"⚠️ **@{a['agent']}** wants to run `{a['tool']}`\n_{a.get('reason', '')}_\n\n"
                        f"```\n{args}\n```\nRead it before allowing.", buttons)
             self.state["waiting"] = before
@@ -366,7 +366,7 @@ class TelegramBot:
             self.client.call("answerCallbackQuery", callback_query_id=q["id"], text="This request is no longer waiting.")
             return
         self.chat.decide(self.thread, decision)
-        label = {"yes": "✅ Allowed", "no": "❌ Denied", "all": "✅ Allowed all writes for this request"}[decision]
+        label = {"yes": "✅ Allowed", "no": "❌ Denied", "all": "✅ Allowed everything for this request"}[decision]
         self.client.call("answerCallbackQuery", callback_query_id=q["id"], text=label)
         msg = q.get("message") or {}
         try:  # replace the buttons with the decision, so it can't be pressed twice

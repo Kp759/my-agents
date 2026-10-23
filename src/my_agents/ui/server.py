@@ -110,6 +110,7 @@ class API:
             "router": {"entry": router.entry, "backend": router.backend, "model": router.model,
                        "default_agent": router.default_agent, "orchestrator": router.orchestrator},
             "mission": router.mission,
+            "freshness": router.freshness,
             "owner": router.owner,
             "agents": [{
                 "name": s.name, "description": s.description, "backend": s.backend, "model": s.model,

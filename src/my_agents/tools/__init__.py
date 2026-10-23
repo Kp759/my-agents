@@ -21,6 +21,7 @@ class Tool:
     approval: bool = False  # always pause the graph and ask the user before running
     writes: bool = False  # changes stored state; needs approval after untrusted content was read
     untrusted: bool = False  # returns outside content (web, files) that may contain prompt injection
+    egress: bool = False  # sends its arguments to any host (a URL can carry data out); gated after untrusted content
 
     def required(self) -> set[str]:
         return {k for k, v in self.params.items() if "optional" not in v}
@@ -37,8 +38,8 @@ class Tool:
 
 
 def make_toolbox(store: Store) -> dict[str, Tool]:
-    from . import code, career, github, memory, research, writing
+    from . import code, career, github, memory, research, web, writing
 
     tools = [*memory.tools(store), *research.tools(), *career.tools(), *code.tools(), *writing.tools(),
-             *github.tools()]
+             *github.tools(), *web.tools()]
     return {t.name: t for t in tools}

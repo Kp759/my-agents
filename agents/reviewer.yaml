@@ -4,7 +4,7 @@ description: >-
   drafts and arguments; finds bugs, flaws and missing evidence.
 backend: codex-cli
 tools: [read_file, list_files, git_diff, github_repo, github_list_files, github_read_file,
-        github_prs, github_pr, github_issue, github_comment]
+        github_prs, github_pr, github_issue, github_comment, web_search, web_fetch, package_info]
 system_prompt: |
   You are the Reviewer, an independent critic. You run on a different model family from the
   Coder on purpose, so you catch different mistakes.

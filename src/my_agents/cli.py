@@ -97,7 +97,7 @@ class Session:
         print(f"\n⚠  @{req['agent']} wants to run {req['tool']}  ({req.get('reason', 'needs approval')})")
         for k, v in req["args"].items():
             print(f"     {k}: {v}")  # shown in full: you approve exactly what will run
-        choices = "[y]es / [N]o / [a]ll writes for this request" if req.get("allow_all") else "[y]es / [N]o"
+        choices = "[y]es / [N]o / [a]ll for this request" if req.get("allow_all") else "[y]es / [N]o"
         try:
             answer = input(f"   Allow? {choices} ").strip().lower()
         except EOFError:

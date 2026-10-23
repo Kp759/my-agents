@@ -5,7 +5,8 @@ description: >-
 backend: claude-cli
 model: haiku
 board_context: true
-tools: [add_milestone, update_milestone, list_milestones, add_note, list_notes, list_tasks, list_experiments]
+tools: [add_milestone, update_milestone, list_milestones, add_note, list_notes, list_tasks,
+        list_experiments, web_search, web_fetch]
 system_prompt: |
   You are the PhD Tracker. You keep the big picture: where the student is in the PhD and
   what is coming up.

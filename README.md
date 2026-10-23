@@ -74,6 +74,21 @@ Chat with your agents from your phone, approve actions with buttons, and get the
 
 In Telegram, just write; `@writer …` picks an agent. Commands: `/new`, `/status`, `/trace`, `/agents`, `/eod`, `/help`. The bot answers only your Telegram account. The token is stored in `~/.config/my-agents/telegram.env` (owner-only, outside the repo). Telegram bot chats are not end-to-end encrypted.
 
+## Up-to-date information
+
+Every model stops learning at its training cutoff, so agents never rely on memory for anything that changes. Each prompt starts with **today's date** and rules to look things up and cite sources with dates (`config.yaml → freshness`). The lookups are our own tools, so they work the same on Claude, Codex and the local Qwen:
+
+| Tool | Source |
+|---|---|
+| `web_search` | DuckDuckGo, with Bing as the fallback (no keys); `recency: day/week/month/year` |
+| `web_fetch` | Any public web page as text, with its publication date |
+| `tech_news` | Hacker News stories with dates and points |
+| `package_info` | Latest version and release dates from PyPI or npm |
+| `search_papers`, `trending_papers` | arXiv / OpenAlex, Hugging Face daily papers |
+| `github_*` | Repos, releases, issues, code |
+
+Each lookup shows in the timeline, so you can see where an answer came from.
+
 ## GitHub
 
 Agents use the `gh` CLI (`gh auth login`). They can search repos (for example, official code for a paper), read READMEs, files, issues, PRs and diffs, and clone repos into `~/Downloads/agent-repos`. The Coder can push a feature branch and open a **draft** PR, and the Coder and Reviewer can comment. Every write asks you first and only works on repos in `github.write_repos` (default: your own).
@@ -86,6 +101,7 @@ Agents use the `gh` CLI (`gh auth login`). They can search repos (for example, o
   - `owner`: whose team this is (`Dr.K`). Agents address the owner by this name, and the dashboard and reports use it.
   - `router.entry`: `router` (a cheap local router) or `orchestrator` (every message goes through the main agent).
   - `mission`: the goal prepended to every agent's prompt.
+  - `freshness`: today's date (`{today}`) and the "check, don't remember" rules, added after the mission.
   - `eod`: which model writes the end-of-day prose.
   - `pricing`: per-token prices, used to estimate cost for backends that don't report it.
   - `security.allowed_roots`: the folders file and code tools may touch.
@@ -98,7 +114,7 @@ Agents use the `gh` CLI (`gh auth login`). They can search repos (for example, o
 Agents read untrusted text (papers, job posts, files), so the system defends against prompt injection with:
 - labelled untrusted content;
 - a taint gate: after reading outside content, every write needs your approval;
-- an egress allowlist;
+- an egress allowlist (`web_fetch` may read any public page, but after outside content a URL the agent made up needs your approval);
 - a path policy that never exposes secrets;
 - secret redaction;
 - locked-down CLI backends;

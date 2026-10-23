@@ -6,7 +6,8 @@ description: >-
 backend: claude-cli
 model: sonnet
 board_context: true
-tools: [list_tasks, list_experiments, list_milestones, github_my_repos, github_issues]
+tools: [list_tasks, list_experiments, list_milestones, github_my_repos, github_issues, web_search,
+        web_fetch, tech_news, package_info]
 delegates: [explainer, examiner, task_runner, experiment_tracker, phd_tracker,
             lit_surveyor, trend_scout, career_coach, coder, reviewer, writer]
 system_prompt: |
