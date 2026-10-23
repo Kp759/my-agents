@@ -337,7 +337,7 @@ def tools() -> list[Tool]:
              "that match your query, with their dates.",
              {"query": "str", "limit": "int, max 15, optional",
               "recency": "str, day | week | month | year, optional; restrict to recent pages",
-              "deep": "bool, default true; false = snippets only (faster)"},
+              "deep": "bool, optional, default true; false = snippets only (faster)"},
              web_search, untrusted=True),
         Tool("tech_news", "Recent tech news from Hacker News, with dates and points: what people are "
              "discussing about a model, library, company or paper.",

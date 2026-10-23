@@ -350,3 +350,17 @@ def test_owner_name_reaches_router_and_agents(tmp_path):
     ask(graph, "hi")
     assert "Dr.K's request" in route_model.calls[0][0]
     assert agent_model.calls[0][0].startswith("You are one of Dr.K's agents.")
+
+
+def test_claude_native_tool_markup_is_parsed_as_a_call():
+    text = ('<invoke name="web_search">\n<parameter name="query">LangGraph release</parameter>\n'
+            '<parameter name="limit">8</parameter>\n<parameter name="deep">true</parameter>\n</invoke>')
+    assert parse_tool_call(text) == {"tool": "web_search", "args": {"query": "LangGraph release", "limit": 8, "deep": True}}
+
+
+def test_parameters_with_defaults_are_marked_optional():
+    # A parameter that has a default but isn't marked "optional" becomes required, and calls fail.
+    for t in make_toolbox(Store(":memory:")).values():
+        for name, desc in t.params.items():
+            if "default" in desc:
+                assert "optional" in desc, f"{t.name}.{name}: {desc!r}"
