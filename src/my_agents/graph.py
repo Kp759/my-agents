@@ -57,7 +57,7 @@ def build_graph(
     if router.default_agent not in agents:
         raise ValueError(f"default agent {router.default_agent!r} is not defined")
     adapters = adapters or {name: spec.adapter() for name, spec in agents.items()}
-    router_adapter = router_adapter or make_adapter(router.backend, router.model)
+    router_adapter = router_adapter or make_adapter(router.backend, router.model, **router.options)
     names = list(agents)
     router_system = ROUTER_PROMPT.format(
         agents="\n".join(f"- {s.name}: {s.description}" for s in agents.values())

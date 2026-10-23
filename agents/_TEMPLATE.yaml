@@ -4,5 +4,7 @@ description: >-                # the router reads this to decide when to call th
   One sentence on which requests this agent handles.
 backend: claude-cli            # claude-cli | codex-cli | ollama
 model: sonnet                  # claude-cli: haiku/sonnet/opus; codex-cli: blank = your default; ollama: a pulled model
+# options:                    # optional, backend-specific
+#   think: false               # ollama: skip the thinking phase of reasoning models
 system_prompt: |
   You are ...

@@ -14,8 +14,15 @@ from .base import AdapterError, Completion, Message
 class OllamaAdapter:
     name = "ollama"
 
-    def __init__(self, model: str | None = "gemma4:e4b", timeout: int = 300, host: str | None = None):
+    def __init__(
+        self,
+        model: str | None = "qwen3:8b",
+        timeout: int = 300,
+        host: str | None = None,
+        think: bool | None = None,
+    ):
         self.model = model
+        self.think = think  # reasoning models (e.g. Qwen3): False skips the thinking phase; None = model default
         self.timeout = timeout
         self.host = (host or os.environ.get("OLLAMA_HOST", "http://localhost:11434")).rstrip("/")
 
@@ -32,6 +39,8 @@ class OllamaAdapter:
             "stream": False,
             "messages": [{"role": "system", "content": system}, *messages],
         }
+        if self.think is not None:
+            body["think"] = self.think
         req = urllib.request.Request(
             f"{self.host}/api/chat",
             data=json.dumps(body).encode(),

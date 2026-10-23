@@ -3,5 +3,7 @@
 # Switch to `backend: claude-cli` with `model: haiku` if Ollama isn't running.
 router:
   backend: ollama
-  model: gemma4:e4b
+  model: qwen3:8b
+  options:
+    think: false             # Qwen3 thinks by default: ~11 s per route; off: ~0.4 s
   default_agent: explainer   # used when the router's reply names no agent

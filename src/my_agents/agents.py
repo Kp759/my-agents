@@ -6,7 +6,7 @@ and model it runs on, so agents can mix Claude, ChatGPT and local models.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import yaml
@@ -24,9 +24,10 @@ class AgentSpec:
     system_prompt: str
     backend: str
     model: str | None = None
+    options: dict = field(default_factory=dict)  # backend-specific, e.g. {think: false}
 
     def adapter(self) -> ChatAdapter:
-        return make_adapter(self.backend, self.model)
+        return make_adapter(self.backend, self.model, **self.options)
 
 
 @dataclass
@@ -34,6 +35,7 @@ class RouterConfig:
     backend: str
     model: str | None
     default_agent: str
+    options: dict = field(default_factory=dict)
 
 
 def load_agents(directory: Path = DEFAULT_AGENTS_DIR) -> dict[str, AgentSpec]:
@@ -53,4 +55,9 @@ def load_agents(directory: Path = DEFAULT_AGENTS_DIR) -> dict[str, AgentSpec]:
 
 def load_router_config(path: Path = DEFAULT_CONFIG) -> RouterConfig:
     data = yaml.safe_load(path.read_text())["router"]
-    return RouterConfig(backend=data["backend"], model=data.get("model"), default_agent=data["default_agent"])
+    return RouterConfig(
+        backend=data["backend"],
+        model=data.get("model"),
+        default_agent=data["default_agent"],
+        options=data.get("options") or {},
+    )

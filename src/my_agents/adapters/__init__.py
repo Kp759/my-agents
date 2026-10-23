@@ -12,12 +12,15 @@ BACKENDS: dict[str, type] = {
 }
 
 
-def make_adapter(backend: str, model: str | None = None) -> ChatAdapter:
+def make_adapter(backend: str, model: str | None = None, **options) -> ChatAdapter:
+    """`options` are backend-specific keyword arguments, e.g. `think=False` for ollama."""
     try:
         cls = BACKENDS[backend]
     except KeyError:
         raise ValueError(f"unknown backend {backend!r}; choose from {sorted(BACKENDS)}") from None
-    return cls(model=model) if model else cls()
+    if model:
+        options["model"] = model
+    return cls(**options)
 
 
 __all__ = [

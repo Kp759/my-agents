@@ -7,7 +7,7 @@ import pytest
 
 from my_agents.adapters import ClaudeCLIAdapter, CodexCLIAdapter, OllamaAdapter
 
-BACKENDS = [ClaudeCLIAdapter(model="haiku"), CodexCLIAdapter(), OllamaAdapter()]
+BACKENDS = [ClaudeCLIAdapter(model="haiku"), CodexCLIAdapter(), OllamaAdapter(think=False)]
 
 
 @pytest.mark.live
