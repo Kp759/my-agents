@@ -1,0 +1,177 @@
+name: mas_core
+description: >-
+  Does a multi-agent team beat a single agent on everyday research-assistant work, and at
+  what cost? Ten tasks with checkable answers: reading and comparing structured data,
+  multi-step writes, date arithmetic, combined "track + explain" requests that need two
+  specialists, code review and concept explanations.
+
+# Simulated user for approval prompts: approve | careful | deny.
+approvals: approve
+# Rubric grading for tasks with check.judge (a cheap model; its cost is reported separately).
+judge: {backend: claude-cli, model: haiku}
+# `my-agents bench run mas_core` runs these; pass --configs to choose others.
+default_configs: [router, orchestrator, solo_sonnet, solo_qwen]
+
+configs:
+  router:
+    description: Today's team. A local router picks one specialist per request.
+    entry: router
+  orchestrator:
+    description: Every request goes to the orchestrator, which delegates to specialists (task only).
+    entry: orchestrator
+  orchestrator_shared_context:
+    description: Like orchestrator, but delegates also see the user's conversation.
+    entry: orchestrator
+    delegate_context: conversation
+  solo_sonnet:
+    description: One Claude Sonnet agent with every tool and no delegation.
+    entry: solo
+    solo: {backend: claude-cli, model: sonnet}
+  solo_haiku:
+    description: One Claude Haiku agent with every tool (cheaper single agent).
+    entry: solo
+    solo: {backend: claude-cli, model: haiku}
+  solo_qwen:
+    description: One local Qwen3 8B agent with every tool (free, private).
+    entry: solo
+    solo: {backend: ollama, model: "qwen3:8b", options: {think: false}}
+  team_qwen:
+    description: The whole team on local Qwen3 8B, router entry.
+    entry: router
+    all_agents: {backend: ollama, model: "qwen3:8b", options: {think: false}}
+
+tasks:
+  - id: exp_best
+    tags: [tool-use, reading]
+    prompt: >-
+      Which of my finished experiments has the best val_acc, and by how many percentage
+      points does it beat the runner-up?
+    setup:
+      experiments:
+        - {name: debate-2agents, status: done, metrics: {val_acc: 0.712, cost_usd: 1.9}}
+        - {name: debate-4agents, status: done, metrics: {val_acc: 0.748, cost_usd: 3.6}}
+        - {name: single-cot, status: done, metrics: {val_acc: 0.701, cost_usd: 0.8}}
+        - {name: debate-8agents, status: failed, notes: "OOM in round 3"}
+    check:
+      contains: [debate-4agents]
+      number: {value: 3.6, tol: 0.15}
+
+  - id: rerun_failed
+    tags: [tool-use, multi-step, writes]
+    prompt: >-
+      For every failed experiment, add a task titled "Rerun <experiment name>" with high
+      priority. Then tell me how many tasks you added.
+    setup:
+      experiments:
+        - {name: debate-8agents, status: failed, notes: "OOM in round 3"}
+        - {name: toolformer-repro, status: failed, notes: "API changed"}
+        - {name: single-cot, status: done, metrics: {val_acc: 0.701}}
+    check:
+      store:
+        - {table: tasks, where_contains: {title: "rerun debate-8agents"}, min: 1, max: 1}
+        - {table: tasks, where_contains: {title: "rerun toolformer-repro"}, min: 1, max: 1}
+        - {table: tasks, where_contains: {title: "rerun"}, min: 2, max: 2}
+      number: {value: 2}
+
+  - id: deadline_gap
+    tags: [tool-use, arithmetic]
+    prompt: How many days are there between my thesis proposal defense and my ICML submission deadline?
+    setup:
+      milestones:
+        - {title: Thesis proposal defense, due: "2026-12-04"}
+        - {title: ICML 2027 submission, due: "2027-01-29"}
+    check:
+      number: {value: 56}
+
+  - id: unread_debate
+    tags: [tool-use, reading]
+    prompt: Which papers tagged "debate" on my reading list haven't I read yet?
+    setup:
+      papers:
+        - {title: "Improving Factuality and Reasoning in Language Models through Multiagent Debate",
+           url: "https://arxiv.org/abs/2305.14325", tags: "debate, mas", status: to_read}
+        - {title: "Encouraging Divergent Thinking in Large Language Models through Multi-Agent Debate",
+           url: "https://arxiv.org/abs/2305.19118", tags: "debate", status: read}
+        - {title: "AutoGen: Enabling Next-Gen LLM Applications via Multi-Agent Conversation",
+           url: "https://arxiv.org/abs/2308.08155", tags: "frameworks", status: to_read}
+    check:
+      contains: [Improving Factuality]
+      not_contains: [AutoGen]
+
+  - id: skill_gap
+    tags: [tool-use, reading]
+    prompt: Which skill has my biggest gap to its target level, and how big is the gap?
+    setup:
+      skills:
+        - {skill: Distributed training, level: 2, target: 4}
+        - {skill: LLM evaluation, level: 2, target: 5}
+        - {skill: Python, level: 4, target: 4}
+    check:
+      contains: [LLM evaluation]
+      number: {value: 3}
+
+  - id: log_and_explain
+    tags: [multi-capability, writes, explanation]
+    prompt: >-
+      Log a planned experiment named "debate-heterogeneous" with the hypothesis "mixing model
+      families in debate improves accuracy over a single family". Then explain in two or three
+      sentences why model diversity could help multi-agent debate.
+    check:
+      store:
+        - {table: experiments, where_contains: {name: debate-heterogeneous}, min: 1, max: 1}
+      judge: >-
+        Explains that agents from different model families make less correlated errors (or have
+        different blind spots or training data), so debate can catch mistakes that a group of
+        identical models would share.
+
+  - id: off_by_one
+    tags: [code, review]
+    prompt: |
+      This should return the average of every k-length window of xs. What's wrong? Answer briefly.
+
+      def moving_average(xs, k):
+          out = []
+          for i in range(len(xs) - k):
+              out.append(sum(xs[i:i + k]) / k)
+          return out
+    check:
+      any: ["- k + 1", "-k+1", "-k + 1", "k-1", "off-by-one", "off by one", "last window", "final window"]
+
+  - id: blackboard
+    tags: [explanation, mas-theory]
+    prompt: >-
+      In three or four sentences: what is a blackboard architecture in multi-agent systems,
+      and what is one advantage and one drawback compared with direct message passing?
+    check:
+      any: [shared, common]
+      judge: >-
+        Describes a shared data store that agents read from and write to (possibly with a
+        controller deciding who acts). Gives one valid advantage (e.g. decoupling: agents
+        need not know each other; easy to add agents; shared context) and one valid drawback
+        (e.g. bottleneck or contention, scalability, consistency, noise from seeing everything).
+
+  - id: quiz_schedule
+    tags: [tool-use, writes, study]
+    prompt: >-
+      Record that I scored 0.4 on the topic "multi-agent debate" and missed the
+      degeneration-of-thought problem. When will I be quizzed on it again?
+    check:
+      store:
+        - {table: quiz_results, where_contains: {topic: debate}, min: 1}
+        - {table: reviews, where_contains: {topic: debate}, where: {interval_days: 1}, min: 1}
+      any: [tomorrow, "1 day", "one day", "{today+1}"]
+
+  - id: urgent_this_week
+    tags: [tool-use, planning]
+    prompt: >-
+      Look at my milestones and open tasks and tell me the single most urgent thing to do
+      this week, and why.
+    setup:
+      tasks:
+        - {title: Write the related work section, priority: high, due: "{today+2}"}
+        - {title: Clean up the lab notebook, priority: low}
+        - {title: Read the AutoGen paper, priority: medium, due: "{today+12}"}
+      milestones:
+        - {title: Workshop paper deadline, due: "{today+4}"}
+    check:
+      contains: [related work]

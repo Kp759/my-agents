@@ -13,6 +13,10 @@ Security:
 - The bot token lives in a file outside the repo (chmod 600) and is never printed or traced.
 - Button presses are checked against the request that is actually waiting.
 - Telegram bot chats are not end-to-end encrypted: Telegram's servers can read them.
+
+Study loop: the bot runs the jobs in config.yaml → study.schedule (morning digest, evening
+quiz, weekly career check) and sends you the results. A "sticky" job such as the quiz keeps
+your replies going to the same agent until you send /done.
 """
 
 from __future__ import annotations
@@ -31,6 +35,7 @@ from pathlib import Path
 
 import yaml
 
+from . import study
 from .agents import DEFAULT_CONFIG, load_agents
 from .chat import ChatManager
 from .report import eod_facts, eod_report, format_row, totals
@@ -55,6 +60,10 @@ class TelegramError(RuntimeError):
 def _config() -> dict:
     data = yaml.safe_load(DEFAULT_CONFIG.read_text()) or {}
     return {"telegram": data.get("telegram") or {}, "owner": data.get("owner") or "", "eod": data.get("eod")}
+
+
+def _full_config() -> dict:  # re-read every time, so schedule edits apply without a restart
+    return yaml.safe_load(DEFAULT_CONFIG.read_text()) or {}
 
 
 def secrets_path() -> Path:
@@ -192,6 +201,8 @@ Just write a message: the router picks the right agent.
 /trace: the steps of the last request
 /agents: who's on the team
 /eod: today's end-of-day report
+/jobs: your study schedule · /run NAME: run a job now
+/due: topics due for review · /done: leave quiz mode
 /help: this message"""
 
 
@@ -240,6 +251,7 @@ class TelegramBot:
                 except Exception as e:  # one bad update must not stop the bot
                     print(f"telegram: error handling update: {type(e).__name__}: {e}")
             self.maybe_send_eod()
+            self.maybe_run_jobs()
 
     def handle(self, update: dict) -> None:
         if "callback_query" in update:
@@ -256,7 +268,8 @@ class TelegramBot:
             self.reply("I can only read text messages.")
             return
         if text.startswith("/"):
-            return self.command(text.split()[0].split("@")[0].lower())
+            head, _, arg = text.partition(" ")
+            return self.command(head.split("@")[0].lower(), arg)
         self.ask(text)
 
     # -- commands ------------------------------------------------------------------------
@@ -264,12 +277,13 @@ class TelegramBot:
     def reply(self, text: str, buttons=None) -> list[dict]:
         return self.client.send(self.user_id, text, buttons)
 
-    def command(self, cmd: str) -> None:
+    def command(self, cmd: str, arg: str = "") -> None:
         if cmd in ("/start", "/help"):
             self.client.call("sendMessage", chat_id=self.user_id, text=HELP.format(team=html.escape(self.team)),
                              parse_mode="HTML")
         elif cmd == "/new":
             self.state["thread"] = f"tg-{self.chat.new_thread()}"
+            self.state.pop("sticky", None)
             self._save()
             self.reply("Started a fresh conversation.")
         elif cmd == "/status":
@@ -288,6 +302,27 @@ class TelegramBot:
                 self.reply("```\n" + "\n".join(lines)[-3500:] + "\n```\n" + _footer(totals(rows)))
         elif cmd == "/eod":
             self.reply(self._eod_text())
+        elif cmd == "/jobs":
+            js = study.jobs(_full_config())
+            self.reply("\n".join(f"**{j['name']}**: {j['at']} {','.join(j.get('days') or ['daily'])} → @{j['agent']}"
+                                  for j in js) or "No jobs in config.yaml → study.schedule.")
+        elif cmd == "/run":
+            js = {j["name"]: j for j in study.jobs(_full_config())}
+            name = arg.strip()
+            if name not in js:
+                self.reply(f"Run which job? {', '.join(js) or 'none configured'}")
+            else:
+                self.run_job(js[name])
+        elif cmd == "/due":
+            d = study.due(self.store)
+            lines = [f"• {r['topic']} (due {r['due']}, last score {r['last_score'] if r['last_score'] is not None else '–'})"
+                     for r in d["due"]]
+            self.reply("**Due for review today**\n" + ("\n".join(lines) or "Nothing due. 🎉") +
+                       (f"\n\nNext: {d['upcoming'][0]['topic']} on {d['upcoming'][0]['due']}" if d["upcoming"] else ""))
+        elif cmd == "/done":
+            self.state.pop("sticky", None)
+            self._save()
+            self.reply("Left quiz mode: the router picks agents again.")
         else:
             self.reply("Unknown command. Try /help.")
 
@@ -295,6 +330,9 @@ class TelegramBot:
 
     def ask(self, text: str) -> None:
         agent = None
+        sticky = self.state.get("sticky") or {}
+        if sticky and time.time() < sticky.get("until", 0) and not text.startswith("@"):
+            agent = sticky["agent"]  # answering a quiz: keep talking to the examiner
         if text.startswith("@"):
             head, _, rest = text.partition(" ")
             agent, text = head[1:].lower(), rest.strip()
@@ -382,6 +420,28 @@ class TelegramBot:
         cfg = _config()
         facts = eod_facts(self.tracer, self.store, date.today())
         return eod_report(facts, cfg["eod"], owner=self.owner or "the user")
+
+    # -- study loop --------------------------------------------------------------------------
+
+    def run_job(self, job: dict) -> bool:
+        """Send a scheduled job's prompt to its agent in the current conversation."""
+        if self.chat.status.get(self.thread, {}).get("state") in ("running", "approval"):
+            return False  # busy; the scheduler tries again on the next poll
+        self.reply(f"⏰ **{job['name']}** → @{job['agent']}")
+        if job.get("sticky"):
+            self.state["sticky"] = {"agent": job["agent"], "until": time.time() + 3 * 3600}
+            self._save()
+            self.reply(f"Your replies now go to @{job['agent']}. Send /done to stop.")
+        self.ask(f"@{job['agent']} {job['prompt']}")
+        return True
+
+    def maybe_run_jobs(self) -> None:
+        ran = self.state.setdefault("jobs_ran", {})
+        for job in study.jobs(_full_config()):
+            if study.is_due(job, datetime.now(), ran.get(job["name"])) and self.run_job(job):
+                ran[job["name"]] = date.today().isoformat()
+                self._save()
+                return  # one job at a time; the next one runs once this conversation is free
 
     def maybe_send_eod(self) -> None:
         at = _config()["telegram"].get("eod_time")

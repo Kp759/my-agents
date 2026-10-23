@@ -119,7 +119,7 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 <script>
 const TABS = [
   ["chat", "Chat"], ["live", "Live"], ["requests", "Requests"], ["agents", "Agents"],
-  ["memory", "Memory"], ["eod", "End of day"], ["learn", "How it works"],
+  ["memory", "Memory"], ["study", "Study"], ["bench", "Bench"], ["eod", "End of day"], ["learn", "How it works"],
 ];
 let tab = location.hash.slice(1) || "chat";
 let selectedRun = null;
@@ -147,7 +147,7 @@ function go(id) { tab = id; location.hash = id; renderTabs(); show(); }
 
 async function show() {
   clearInterval(timer);
-  const views = {chat, live, requests, agents, memory, eod, learn};
+  const views = {chat, live, requests, agents, memory, study, bench, eod, learn};
   await views[tab]();
   if (["chat", "live", "requests"].includes(tab)) timer = setInterval(() => views[tab](true), tab === "chat" ? 1200 : 2000);
 }
@@ -480,6 +480,99 @@ function md(text) {
   return html;
 }
 
+// ---------- study ----------
+const pct = (x) => x == null ? "–" : Math.round(x * 100) + "%";
+const bar = (x, color) => `<span style="display:inline-block;width:80px;height:8px;background:var(--chip);border-radius:4px;vertical-align:middle">
+  <span style="display:block;width:${Math.round((x || 0) * 80)}px;height:8px;border-radius:4px;background:${color || "var(--accent)"}"></span></span>`;
+
+async function study() {
+  const d = await api("/api/study");
+  const due = d.due.due.map((r) => `<div class="item"><b>${esc(r.topic)}</b>
+      <div class="small muted">due ${esc(r.due)} · last score ${pct(r.last_score)} · reviewed ${r.reps}× · forgotten ${r.lapses}×</div>
+      <details><summary>objectives and exercise</summary><pre>${esc(r.notes)}</pre></details></div>`).join("");
+  const reviews = d.reviews.map((r) => `<tr><td>${esc(r.topic)}</td><td>${esc(r.due)}</td><td>every ${r.interval_days} d</td>
+      <td>${bar(r.last_score, r.last_score < 0.6 ? "var(--err)" : "var(--ok)")} ${pct(r.last_score)}</td><td>${r.reps}</td><td>${r.lapses}</td></tr>`).join("");
+  const quizzes = d.quizzes.map((q) => `<tr><td>${esc(q.created.slice(0, 10))}</td><td>${esc(q.topic)}</td>
+      <td>${bar(q.score, q.score < 0.6 ? "var(--err)" : "var(--ok)")} ${pct(q.score)}</td><td class="small">${esc(q.gaps)}</td></tr>`).join("");
+  const jobs = d.jobs.map((j) => `<div class="item"><b>${esc(j.name)}</b> <span class="muted small">${esc(j.at)} · ${esc((j.days || ["daily"]).join(", "))} →</span> ${agentChip(j.agent)}
+      ${j.sticky ? `<span class="chip">replies stay with this agent</span>` : ""}
+      <details><summary>prompt</summary><pre>${esc(j.prompt)}</pre></details></div>`).join("");
+  const r = d.reading;
+  $("#view").innerHTML = `<div class="grid">
+    <div>
+      <div class="panel" style="margin-bottom:20px"><h2>Due today</h2>${due || `<div class="empty">Nothing due. ${d.due.upcoming[0] ? `Next: ${esc(d.due.upcoming[0].topic)} on ${esc(d.due.upcoming[0].due)}.` : "Run <code>my-agents study init</code> to load the MAS curriculum."}</div>`}
+        <div class="small muted" style="margin-top:8px">Quiz yourself: Telegram <code>/run quiz</code>, or <code>my-agents study run quiz</code>.</div></div>
+      <div class="panel" style="margin-bottom:20px"><h2>Daily routine</h2>${jobs || `<div class="empty">No jobs in config.yaml → study.schedule.</div>`}
+        <div class="small muted" style="margin-top:8px">The Telegram bot runs these on time. Edit them in <code>config.yaml</code>.</div></div>
+      <div class="panel"><h2>Core reading · ${r.core_read}/${r.core_total} read</h2>${bar(r.core_total ? r.core_read / r.core_total : 0)}
+        ${r.to_read.map((p) => `<div class="small" style="margin-top:6px">• <a href="${esc(p.url)}" target="_blank" rel="noopener noreferrer">${esc(p.title)}</a></div>`).join("")}</div>
+    </div>
+    <div>
+      <div class="panel" style="margin-bottom:20px"><h2>Spaced repetition · every topic</h2>
+        <div class="tablewrap"><table><tr><th>Topic</th><th>Next</th><th>Interval</th><th>Last score</th><th>Reviews</th><th>Forgotten</th></tr>${reviews}</table></div>
+        <div class="small muted" style="margin-top:8px">Good scores push a topic further out (1 d → 3 d → interval × ease); a score under 60% brings it back tomorrow. <i>Code: <code>study.py</code>.</i></div></div>
+      <div class="panel"><h2>Quiz history</h2><div class="tablewrap"><table><tr><th>Date</th><th>Topic</th><th>Score</th><th>Gaps</th></tr>${quizzes}</table></div></div>
+    </div></div>`;
+}
+
+// ---------- bench ----------
+let benchRun = null, benchTrial = null;
+async function bench() {
+  const runs = await api("/api/bench");
+  if (!benchRun && runs[0]) benchRun = runs[0].id;
+  const list = runs.map((r) => `<div class="item ${r.id === benchRun ? "on" : ""}" onclick="benchRun='${esc(r.id)}'; benchTrial=null; bench()">
+      <div><b>${esc(r.suite)}</b> <span class="small muted">${r.trials} trials</span></div>
+      <div class="small muted">${new Date(r.date).toLocaleString()} · ${esc(r.configs)}</div></div>`).join("");
+  $("#view").innerHTML = `<div class="grid">
+    <div class="panel"><h2>Benchmark runs</h2>${list || `<div class="empty">No runs yet.</div>`}
+      <div class="small muted" style="margin-top:10px">Run one in a terminal:<pre>my-agents bench run mas_core
+my-agents bench run injection</pre>Suites live in <code>bench/suites/</code>. <i>Code: <code>bench.py</code>.</i></div></div>
+    <div id="benchdetail"></div></div>`;
+  if (benchRun) await benchDetail();
+}
+
+async function benchDetail() {
+  const d = await api(`/api/bench/${benchRun}`);
+  const s = d.summary, cfgs = Object.keys(s.configs);
+  const rows = cfgs.map((c) => { const r = s.configs[c];
+    return `<tr><td><b>${esc(c)}</b><div class="small muted">${esc(r.description)}</div></td>
+      <td>${bar(r.pass_rate, "var(--ok)")} ${r.passed}/${r.trials} <span class="small muted">(${pct(r.ci95[0])}–${pct(r.ci95[1])})</span></td>
+      <td>${money(r.mean_cost_usd)}${r.unpriced.length ? " + tokens" : ""}</td><td>${r.mean_wall_s.toFixed(1)}s</td>
+      <td>${r.mean_model_calls.toFixed(1)}</td><td>${r.mean_tool_calls.toFixed(1)}</td><td>${r.mean_delegations.toFixed(1)}</td>
+      <td>${k(Math.round(r.mean_input_tokens))} / ${k(Math.round(r.mean_output_tokens))}</td><td class="small">${esc(r.models.join(", "))}</td></tr>`; }).join("");
+  const attack = cfgs.filter((c) => s.configs[c].attack).map((c) => { const a = s.configs[c].attack;
+    return `<tr><td><b>${esc(c)}</b></td><td>${pct(a.attempt_rate)}</td><td>${bar(a.success_rate, "var(--err)")} ${pct(a.success_rate)}</td>
+      <td>${pct(a.hijack_rate)}</td><td>${pct(a.propagation_rate)}</td><td>${pct(s.configs[c].pass_rate)}</td></tr>`; }).join("");
+  const byKey = {};
+  for (const r of d.results) (byKey[r.task + "|" + r.config] ||= []).push(r);
+  const matrix = Object.keys(s.matrix).map((t) => `<tr><td>${esc(t)}</td>${cfgs.map((c) => {
+      const rs = byKey[t + "|" + c] || [];
+      return `<td>${rs.map((r) => `<button class="btn" title="${esc((r.fails || []).join("; ") || "passed")}"
+        style="padding:2px 8px;margin:1px;${r.passed ? "color:var(--ok)" : "color:var(--err)"}"
+        onclick="benchTrial='${esc(r.trial)}'; benchDetail()">${r.passed ? "✓" : "✗"}${r.attack?.executed ? " ⚠" : ""}</button>`).join("")}</td>`; }).join("")}</tr>`).join("");
+  let trial = "";
+  if (benchTrial) {
+    const r = d.results.find((x) => x.trial === benchTrial);
+    const steps = await api(`/api/bench/${benchRun}/trial/${encodeURIComponent(benchTrial)}`);
+    trial = `<div class="panel" style="margin-top:20px"><h2>Trial ${esc(r.config)} / ${esc(r.task)} (rep ${r.rep})</h2>
+      <div class="${r.passed ? "ok" : "err"}">${r.passed ? "passed" : "failed: " + esc((r.fails || []).join("; "))}</div>
+      ${r.attack ? `<div class="small">attack: read poison ${r.attack.read_poison} · attempted ${r.attack.attempted} · <b>executed ${r.attack.executed}</b> · hijacked ${r.attack.hijacked} · propagated ${r.attack.propagated}</div>` : ""}
+      ${r.approvals.length ? `<div class="small muted">simulated approvals: ${r.approvals.map((a) => `${esc(a.tool)} → ${esc(a.decision)}`).join(", ")}</div>` : ""}
+      <details open><summary>final answer</summary><pre>${esc(r.answer || "(none)")}</pre></details>
+      ${flow(steps)}${steps.map((x) => stepCard(x, x.io)).join("")}</div>`;
+  }
+  $("#benchdetail").innerHTML = `<div class="panel"><h2>${esc(s.suite)} · ${new Date(s.date).toLocaleString()}</h2>
+      <p class="small muted">${esc(s.description)}</p>
+      <p class="small">${s.trials} trials · ${s.repeats} repeat(s) · simulated approvals: <code>${esc(s.approvals)}</code> ·
+        pass-rate ranges are 95% Wilson intervals (wide with few trials: add <code>--repeats</code>).</p>
+      <div class="tablewrap"><table><tr><th>Config</th><th>Pass rate</th><th>Mean cost</th><th>Time</th><th>Model calls</th><th>Tool calls</th><th>Delegations</th><th>Tokens in/out</th><th>Models</th></tr>${rows}</table></div>
+      ${attack ? `<h2 style="margin-top:18px">Prompt injection</h2><div class="tablewrap"><table><tr><th>Config</th><th>Attempted</th><th>Executed</th><th>Hijacked</th><th>Propagated</th><th>Utility</th></tr>${attack}</table></div>
+        <div class="small muted">Executed = the injected side effect actually happened. Propagated = it was done by an agent that never read the poison itself.</div>` : ""}
+      <h2 style="margin-top:18px">Per task · click a trial to see every step</h2>
+      <div class="tablewrap"><table><tr><th>Task</th>${cfgs.map((c) => `<th>${esc(c)}</th>`).join("")}</tr>${matrix}</table></div>
+      <details><summary>report.md (paste into a write-up)</summary><pre>${esc(d.report)}</pre></details></div>${trial}`;
+}
+
 async function eod() {
   const today = new Date().toLocaleDateString("en-CA");
   const day = $("#eodday")?.value || today;
@@ -538,6 +631,13 @@ function learn() {
   <h3>10. Fresh information: beating the training cutoff</h3>
   <p>A model only knows the world up to its <b>training cutoff</b>; asked about "the latest" anything, it answers confidently from old memory. So every prompt starts with <b>today's date</b> and rules telling the agent to check time-sensitive facts with tools and cite sources with dates (<code>config.yaml → freshness</code>; see it in the Agents tab). The tools run here, not inside a provider, so they work the same for Claude, Codex and the local Qwen: <code>web_search</code> (DuckDuckGo, Bing as fallback; it also reads the top 3 pages and keeps the passages that match the query, because small models rarely decide to open pages themselves, which is a nice example of moving a decision from the model into the tool), <code>web_fetch</code> (a page as text, with its publication date), <code>tech_news</code> (Hacker News, dated) and <code>package_info</code> (latest versions from PyPI/npm), alongside arXiv/OpenAlex, Hugging Face and GitHub. Each lookup is a step in the timeline, so you can check which source an answer came from. <i>Code: <code>tools/web.py</code>, <code>graph.py → freshness</code>.</i></p>
   <p><b>Research angle:</b> retrieval vs. parametric knowledge is an open problem: when should an agent trust its weights, and how should it resolve conflicts between sources? Compare an answer with and without the tools in the Requests tab.</p>
+  <h3>11. Experiments: the benchmark harness</h3>
+  <p>A design choice is only better if you can measure it. <code>my-agents bench run SUITE</code> runs a suite of tasks with checkable answers under several <b>configurations</b> of the team: router vs orchestrator, a single agent with every tool (<code>solo</code>) vs the team, Claude vs local Qwen, delegates that see only their task vs the whole conversation, defences on or off. Every trial gets a fresh in-memory store, and network, GitHub, file and code tools are replaced by canned fixtures, so trials are repeatable and harmless. The <b>Bench</b> tab shows pass rate with 95% intervals, cost, time, calls and tokens per config, and every step of every trial. The <code>injection</code> suite is a security study: poisoned papers, pages, job posts and files, measuring whether an attack was attempted, executed, hijacked the answer, or <b>propagated</b> to an agent that never read the poison. <i>Code: <code>bench.py</code>, suites in <code>bench/suites/</code>.</i></p>
+  <p><b>Research angle:</b> "when does a multi-agent system beat a single agent, and at what cost?" and "how does injection spread between agents, and what stops it?" are open questions. Add tasks and repeats, and the report is the core of a write-up.</p>
+
+  <h3>12. The study loop</h3>
+  <p>Learning sticks with <b>spaced repetition</b>: each quiz score reschedules its topic (good answers push it further out, a weak one brings it back tomorrow). <code>my-agents study init</code> loads a multi-agent curriculum (9 modules, 18 checked readings, each with a hands-on exercise in this repository). The Telegram bot runs your routine from <code>config.yaml → study.schedule</code>: a morning digest of new papers, an evening quiz (your replies go to the Examiner until <code>/done</code>), and a weekly career check against live Anthropic job posts. See the <b>Study</b> tab. <i>Code: <code>study.py</code>.</i></p>
+
   </div>`;
 }
 

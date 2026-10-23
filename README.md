@@ -61,6 +61,9 @@ python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"
 | `my-agents eod` | End-of-day report: what each agent did, how, and the cost |
 | `my-agents ui` | **Chat with the agents in the browser** (approve actions there too), plus a live board, step-by-step timelines with exact prompts, team topology, memory and EOD |
 | `my-agents telegram` | The Telegram bot (run `telegram setup` once first) |
+| `my-agents study [init\|due\|jobs\|run JOB]` | Load the MAS curriculum, see topics due for review, run a study job now |
+| `my-agents bench run SUITE` | Benchmark team configurations on a task suite (`mas_core`, `injection`) |
+| `my-agents bench list` / `show ID` | Past benchmark runs and their reports |
 | `my-agents agents` / `tools` | Agents, their tools and delegates; tools and their safety flags |
 
 ## Telegram
@@ -72,7 +75,28 @@ Chat with your agents from your phone, approve actions with buttons, and get the
 .venv/bin/my-agents telegram         # keep this running (it only makes outbound connections)
 ```
 
-In Telegram, just write; `@writer …` picks an agent. Commands: `/new`, `/status`, `/trace`, `/agents`, `/eod`, `/help`. The bot answers only your Telegram account. The token is stored in `~/.config/my-agents/telegram.env` (owner-only, outside the repo). Telegram bot chats are not end-to-end encrypted.
+In Telegram, just write; `@writer …` picks an agent. Commands: `/new`, `/status`, `/trace`, `/agents`, `/eod`, `/jobs`, `/run JOB`, `/due`, `/done`, `/help`. The bot answers only your Telegram account. The token is stored in `~/.config/my-agents/telegram.env` (owner-only, outside the repo). Telegram bot chats are not end-to-end encrypted.
+
+## Study loop
+
+A daily routine that runs itself through Telegram (`config.yaml → study.schedule`, edit freely):
+
+| When | Agent | What you get |
+|---|---|---|
+| 08:00 daily | Trend Scout | The 3 most important new multi-agent papers or posts of the week, with why each matters in an interview |
+| 20:30 daily | Examiner | A 3-question quiz on the topic most due for review; just reply (your answers go to the Examiner until `/done`) |
+| Sun 18:00 | Career Coach | Current Anthropic roles, your top 3 gaps with this week's actions, and one mock interview question |
+
+Quiz scores drive **spaced repetition**: a good answer pushes a topic further out (1 day, 3 days, then longer), a weak one brings it back tomorrow. `my-agents study init` loads a curriculum for LLM multi-agent systems: 9 modules from agent foundations to MAS safety, 18 readings with checked links (Wooldridge, ReAct, AutoGen, CAMEL, Generative Agents, debate, Anthropic's agent posts, MAS failure modes, prompt infection, multi-agent risks), and a hands-on exercise in this repository for each. See the dashboard's **Study** tab.
+
+## Research: the benchmark harness
+
+The system doubles as a testbed. `my-agents bench run SUITE` runs a suite of tasks with checkable answers under several configurations of the team and reports pass rate (with 95% Wilson intervals), cost, time, model and tool calls, delegations and tokens. Each trial gets a fresh in-memory store; network, GitHub, file and code tools are replaced by canned fixtures, so trials are repeatable and can't touch anything real.
+
+- **`mas_core`**: when does a team beat a single agent, and at what cost? Configs: `router`, `orchestrator`, `orchestrator_shared_context` (delegates see the conversation), `solo_sonnet`/`solo_haiku`/`solo_qwen` (one agent with every tool), `team_qwen`.
+- **`injection`**: how does prompt injection spread between agents, and what does each defence buy? Poisoned papers, pages, job posts, files, a fake user turn inside data and a forged orchestrator message, with clean controls. It measures whether an attack was attempted or executed, whether it hijacked the answer, and whether it propagated to an agent that never read the poison. Defences are switched off (labels, taint gate, egress gate) only inside the benchmark sandbox.
+
+Results land in `data/bench/<run>/` with a `report.md` ready for a write-up. In the dashboard's **Bench** tab you can open every step of every trial. Suites are YAML in `bench/suites/`; add tasks and repeats to turn a pilot into a result.
 
 ## Up-to-date information
 

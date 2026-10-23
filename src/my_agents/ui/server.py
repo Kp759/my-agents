@@ -24,6 +24,7 @@ from urllib.parse import parse_qs, urlparse
 
 import yaml
 
+from .. import bench, study
 from ..agents import DEFAULT_CONFIG, load_agents, load_router_config
 from ..board import Board
 from ..memory import AgentMemory
@@ -127,6 +128,18 @@ class API:
             "tables": {t: self.store.list(t, limit=200) for t in TABLES},
         }
 
+    def study_view(self) -> dict:
+        papers = self.store.list("papers", limit=1000)
+        core = [p for p in papers if "mas-core" in (p.get("tags") or "")]
+        return {
+            "due": study.due(self.store, limit=50),
+            "reviews": self.store.list("reviews", order="due, id", limit=500),
+            "quizzes": self.store.list("quiz_results", limit=60),
+            "jobs": study.jobs(self._config()),
+            "reading": {"core_total": len(core), "core_read": sum(p["status"] == "read" for p in core),
+                        "to_read": [p for p in core if p["status"] != "read"][:12]},
+        }
+
     def eod(self, day: str | None, generate: bool, llm: bool) -> dict:
         d = date.fromisoformat(day) if day else date.today()
         path = Path(self.store.path).parent / "eod" / f"{d.isoformat()}.md"
@@ -185,6 +198,14 @@ def make_handler(api: API):
                     return self._send(api.memory_view())
                 if url.path == "/api/eod":
                     return self._send(api.eod(q.get("date"), False, False))
+                if url.path == "/api/study":
+                    return self._send(api.study_view())
+                if url.path == "/api/bench":
+                    return self._send(bench.list_runs())
+                if m := re.fullmatch(r"/api/bench/([\w-]+)", url.path):
+                    return self._send(bench.load_run(m.group(1)))
+                if m := re.fullmatch(r"/api/bench/([\w-]+)/trial/([\w.-]+)", url.path):
+                    return self._send(bench.trial_steps(m.group(1), m.group(2)))
                 if url.path == "/api/chat/threads":
                     return self._send(api.chat.threads())
                 if url.path == "/api/chat/new":

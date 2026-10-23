@@ -77,6 +77,48 @@ telegram:
   secrets_file: ~/.config/my-agents/telegram.env   # bot token + your user id; outside the repo, chmod 600
   eod_time: "21:00"                                # send the end-of-day report at this local time; blank = off
 
+# The study loop (see src/my_agents/study.py). The Telegram bot runs each job once a day at
+# `at` (local time) on `days` (default every day) by sending `prompt` to `agent`, and sends
+# you the answer. `sticky: true` keeps your replies going to that agent (send /done to stop),
+# so you can answer a quiz in plain text. Run one now: `my-agents study run JOB` or /run JOB.
+# `{focus}` and `{owner}` are filled in. Edit freely; this is your study routine.
+study:
+  focus: "LLM multi-agent systems: coordination, communication, orchestration, evaluation and MAS safety"
+  schedule:
+    - name: digest
+      at: "08:00"
+      agent: trend_scout
+      prompt: |
+        Morning research digest for {owner}. Find the 3 most important papers or posts from the
+        last 7 days on {focus}. Use trending_papers, search_papers (sort=recent) and web_search
+        (recency=week). For each: title, link, date; problem, method and result in 3 sentences;
+        and one sentence on why it would matter in an Anthropic research interview.
+        End with one question worth thinking about today. Don't save anything: {owner} will tell
+        you what to save. Under 350 words.
+    - name: quiz
+      at: "20:30"
+      agent: examiner
+      sticky: true
+      prompt: |
+        Evening quiz for {owner}. Call due_reviews. Pick the most overdue topic (if nothing is due,
+        the weakest topic in list_quiz_results). Say which topic it is, then ask ONE question at the
+        depth of an Anthropic research interview, using the topic's objectives, and wait for the
+        answer. Ask 3 questions in total, one at a time, grading each answer. Then record the
+        score with record_quiz_result, using the topic name exactly as due_reviews shows it.
+    - name: career
+      at: "18:00"
+      days: [sun]
+      agent: career_coach
+      prompt: |
+        Weekly career check for {owner}, aiming for a research role at Anthropic as soon as possible.
+        1. Find current Anthropic roles related to {focus} (agents, multi-agent, safety, evaluations,
+           research engineering) with job_postings, and list titles and links.
+        2. Read the best fit with job_description and compare its requirements with list_skills,
+           list_experiments and the GitHub repos. Quote the requirements you rely on.
+        3. Give the top 3 gaps with one concrete action each for this week (5 hours in total), and
+           the single most valuable portfolio item to finish next.
+        4. End with one mock interview question for {owner} to answer.
+
 # Guardrails (see docs/SECURITY.md).
 security:
   # File and code tools only work under these folders. Secrets (.ssh, .env, keys,

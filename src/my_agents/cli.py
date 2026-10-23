@@ -12,6 +12,11 @@
     my-agents tools                  list every tool and its safety flags
     my-agents telegram setup         connect a Telegram bot (one time)
     my-agents telegram               run the Telegram bot: chat and approve from your phone
+    my-agents study init             add the MAS curriculum to your reviews and reading list
+    my-agents study [due|jobs]       topics due for review today / your study schedule
+    my-agents study run quiz         run a study job now (digest, quiz, career…)
+    my-agents bench run SUITE        benchmark team configurations on a task suite
+    my-agents bench list | show RUN  past benchmark runs / one run's report
 """
 
 from __future__ import annotations
@@ -266,6 +271,70 @@ def cmd_tools(_args) -> int:
     return 0
 
 
+def cmd_study(args) -> int:
+    from . import study
+
+    store = Store()
+    if args.action == "init":
+        out = study.init_curriculum(store)
+        print(f"Added {out['topics_added']} review topics and {out['papers_added']} papers (tag mas-core). "
+              f"New topics are staggered one per day; see them with `my-agents study due`.")
+    elif args.action == "due":
+        d = study.due(store, limit=50)
+        for r in d["due"]:
+            score = "-" if r["last_score"] is None else f"{r['last_score']:.0%}"
+            print(f"  due {r['due']}  last {score:>4}  every {r['interval_days']:>3}d  {r['topic']}")
+        print("  nothing due today" if not d["due"] else "")
+        for r in d["upcoming"]:
+            print(f"  next {r['due']}  {r['topic']}")
+    elif args.action == "jobs":
+        for j in study.jobs(_config()):
+            print(f"  {j['name']:<10} {j['at']:<6} {','.join(j.get('days') or ['daily']):<12} @{j['agent']}"
+                  + ("  (sticky)" if j["sticky"] else ""))
+    else:  # run
+        js = {j["name"]: j for j in study.jobs(_config())}
+        if args.name not in js:
+            print(f"error: unknown job {args.name!r}; jobs: {', '.join(js)}", file=sys.stderr)
+            return 1
+        job, session = js[args.name], Session()
+        thread = f"study-{job['name']}-{date.today().isoformat()}"
+        print(session.turn(thread, job["prompt"], job["agent"]))
+        while job["sticky"]:  # a quiz: keep answering the same agent
+            try:
+                text = input(f"\nyou (to @{job['agent']}, empty line or /done to stop)> ").strip()
+            except EOFError:
+                break
+            if not text or text in ("/done", "/quit"):
+                break
+            print(session.turn(thread, text, job["agent"]))
+    return 0
+
+
+def cmd_bench(args) -> int:
+    from . import bench
+
+    if args.action == "list":
+        for r in bench.list_runs():
+            print(f"  {r['id']}  {r['suite']:<12} {r['trials']:>3} trials  {r['configs']}")
+        return 0
+    if args.action == "show":
+        print(bench.load_run(args.name)["report"])
+        return 0
+    suite = bench.load_suite(args.name)
+    configs = args.configs.split(",") if args.configs else None
+    tasks = args.tasks.split(",") if args.tasks else None
+    plan = bench.plan(suite, configs, tasks, args.repeats)
+    print(f"Suite {suite['name']}: {len(plan)} trials ({len(set(c for c, _, _ in plan))} configs × "
+          f"{len(set(t['id'] for _, t, _ in plan))} tasks × {args.repeats} repeats). Each trial is a full request "
+          "on the configured models (your subscriptions); local models are free.")
+    if not args.yes and input("Run it? [y/N] ").strip().lower() != "y":
+        return 1
+    run = bench.run_suite(suite, configs, tasks, args.repeats, progress=print)
+    print("\n" + run["report"])
+    print(f"\nSaved to {run['dir']} (open the Bench tab in `my-agents ui` to inspect every trial).")
+    return 0
+
+
 def cmd_telegram(args) -> int:
     from . import telegram
 
@@ -318,6 +387,20 @@ def main(argv: list[str] | None = None) -> int:
     tg = sub.add_parser("telegram", help="chat with your agents from Telegram")
     tg.add_argument("action", nargs="?", choices=["run", "setup"], default="run")
     tg.set_defaults(fn=cmd_telegram)
+
+    st = sub.add_parser("study", help="spaced repetition, curriculum and study jobs")
+    st.add_argument("action", nargs="?", choices=["due", "init", "jobs", "run"], default="due")
+    st.add_argument("name", nargs="?", help="job name for `run`")
+    st.set_defaults(fn=cmd_study)
+
+    bn = sub.add_parser("bench", help="benchmark team configurations on a task suite")
+    bn.add_argument("action", choices=["run", "list", "show"])
+    bn.add_argument("name", nargs="?", help="suite name for `run`, run id for `show`")
+    bn.add_argument("--configs", help="comma-separated config names (default: all in the suite)")
+    bn.add_argument("--tasks", help="comma-separated task ids (default: all)")
+    bn.add_argument("--repeats", type=int, default=1, help="trials per config and task (more = tighter error bars)")
+    bn.add_argument("-y", "--yes", action="store_true", help="don't ask before running")
+    bn.set_defaults(fn=cmd_bench)
 
     args = p.parse_args(argv)
     return args.fn(args)

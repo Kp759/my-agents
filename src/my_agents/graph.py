@@ -125,11 +125,19 @@ def build_graph(
     router_adapter: ChatAdapter | None = None,
     toolbox: dict[str, Tool] | None = None,
     checkpointer=DEFAULT_CHECKPOINTER,
+    defences: dict | None = None,
 ):
-    """`adapters`, `router_adapter` and `toolbox` override the defaults (used by tests).
+    """`adapters`, `router_adapter` and `toolbox` override the defaults (used by tests and `bench`).
 
     Pass `checkpointer=None` when a platform supplies its own (LangGraph Studio).
+    `defences` switches off injection defences ({"labels", "taint", "egress"}: False). Only the
+    benchmark does this, in a throwaway store with stubbed tools, to measure what each defence buys.
     """
+    defences = {**DEFENCES, **(defences or {})}
+    unknown = set(defences) - set(DEFENCES)
+    if unknown:
+        raise ValueError(f"unknown defences {sorted(unknown)}; known: {sorted(DEFENCES)}")
+    labels = defences["labels"]
     names = list(agents)
     if router.default_agent not in agents:
         raise ValueError(f"default agent {router.default_agent!r} is not defined")
@@ -202,7 +210,7 @@ def build_graph(
         def node(state: State, config) -> State:
             ids = _ids(config)
             task, scratch, steps = state.get("task"), state.get("scratch") or [], state.get("steps", 0)
-            inputs = ([{"role": "user", "content": task}] if task else state["messages"]) + scratch
+            inputs = _job_inputs(state, task, router.delegate_context) + scratch
             if not scratch:  # first step on this job
                 board.post(spec.name, "start", task or state["messages"][-1]["content"], ids["thread_id"])
 
@@ -211,8 +219,8 @@ def build_graph(
             if spec.board_context:
                 recent = board.recent(limit=8)
                 if recent:
-                    system += "\n\n## Recent board posts\n" + wrap_untrusted(
-                        "\n".join(Board.format(r) for r in recent))
+                    posts = "\n".join(Board.format(r) for r in recent)
+                    system += "\n\n## Recent board posts\n" + (wrap_untrusted(posts) if labels else posts)
             system += tools_text
 
             try:
@@ -255,7 +263,8 @@ def build_graph(
                     # a delegate that read untrusted content may pass injected text back up
                     "tainted": caller["tainted"] or tainted,
                     "scratch": caller["scratch"] + [
-                        {"role": "user", "content": format_result(f"delegate to {spec.name}", final, untrusted=tainted)}
+                        {"role": "user", "content": format_result(f"delegate to {spec.name}", final,
+                                                                  untrusted=labels and tainted)}
                     ],
                 }
             return {"messages": [{"role": "assistant", "content": final, "agent": spec.name}], "scratch": [],
@@ -275,8 +284,9 @@ def build_graph(
         # re-runs from the top when the graph resumes after the interrupt.
         updates: State = {}
         exposed = bool(state.get("tainted") or agents[agent].board_context) and not state.get("writes_ok")
-        taint_gate = bool(tool and tool.writes and state.get("tainted") and not state.get("writes_ok"))
-        egress_gate = bool(tool and tool.egress and exposed and not _seen(state, args))
+        taint_gate = bool(defences["taint"] and tool and tool.writes and state.get("tainted")
+                          and not state.get("writes_ok"))
+        egress_gate = bool(defences["egress"] and tool and tool.egress and exposed and not _seen(state, args))
         if tool and (tool.approval or taint_gate or egress_gate):
             reason = ("this action always needs approval" if tool.approval else
                       "this job read untrusted content (web or files), so writes need approval" if taint_gate else
@@ -286,7 +296,8 @@ def build_graph(
                                 "allow_all": not tool.approval})
             decision = _decision(answer)
             tracer.record(**_ids(config), node="approval", agent=agent, backend="user", model=None, latency_ms=0,
-                          tool=name, decision=decision, args=preview(json.dumps(args, default=str)), reason=reason)
+                          tool=name, decision=decision, args=preview(json.dumps(args, default=str)), reason=reason,
+                          io={"args": args, "decision": decision})
             if decision == "no":
                 return _tool_result(state, name, "The user declined this action. Ask what they want instead.")
             if decision == "all" and not tool.approval:
@@ -310,7 +321,7 @@ def build_graph(
                           io={"args": args, "result": result if error is None else error})
             if tool.approval and error is None:
                 board.post(agent, "action", f"{name} {json.dumps(args, default=str)}", ids["thread_id"])
-        content = (format_result(name, result, untrusted=bool(tool and tool.untrusted)) if error is None
+        content = (format_result(name, result, untrusted=bool(labels and tool and tool.untrusted)) if error is None
                    else f"[tool error: {name}]\n{error}")
         if tool and tool.untrusted and error is None:
             updates["tainted"] = True
@@ -387,6 +398,19 @@ def _decision(answer) -> str:
     if text in ("a", "all"):
         return "all"
     return "yes" if text in ("y", "yes", "approve", "ok") else "no"
+
+
+DEFENCES = {"labels": True, "taint": True, "egress": True}  # all on, except inside `my-agents bench`
+
+
+def _job_inputs(state: State, task: str | None, delegate_context: str) -> list[Message]:
+    """What an agent sees: the conversation, or for a delegate just its task (default) or both."""
+    if not task:
+        return state["messages"]
+    if delegate_context == "conversation":
+        caller = (state.get("stack") or [{}])[-1].get("agent", "another agent")
+        return [*state["messages"], {"role": "user", "content": f"Sub-task delegated to you by @{caller}: {task}"}]
+    return [{"role": "user", "content": task}]
 
 
 def today() -> str:

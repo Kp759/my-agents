@@ -1,6 +1,7 @@
 """Shared memory: one SQLite file that every agent reads and writes through tools.
 
-Tables: tasks, experiments, milestones, notes, papers, quiz_results, skills, and
+Tables: tasks, experiments, milestones, notes, papers, quiz_results, reviews (spaced
+repetition, see study.py), skills, and
 `board`, the shared feed where agents post what they are working on, and
 `agent_memory`, each agent's long-term memory (agent='*' is the profile every agent shares).
 Lives at `data/memory.sqlite` (override with MY_AGENTS_DATA); `data/` is gitignored.
@@ -54,6 +55,11 @@ CREATE TABLE IF NOT EXISTS agent_memory (
 );
 CREATE TABLE IF NOT EXISTS chat_threads (
     id TEXT PRIMARY KEY, title TEXT, created TEXT, updated TEXT
+);
+CREATE TABLE IF NOT EXISTS reviews (
+    id INTEGER PRIMARY KEY, topic TEXT UNIQUE NOT NULL, notes TEXT DEFAULT '', ease REAL DEFAULT 2.5,
+    interval_days INTEGER DEFAULT 0, reps INTEGER DEFAULT 0, lapses INTEGER DEFAULT 0, last_score REAL,
+    due TEXT, created TEXT, updated TEXT
 );
 CREATE TABLE IF NOT EXISTS skills (
     id INTEGER PRIMARY KEY, skill TEXT UNIQUE NOT NULL, level INTEGER, target INTEGER,

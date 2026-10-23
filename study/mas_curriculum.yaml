@@ -1,0 +1,169 @@
+# A curriculum for becoming an expert in LLM multi-agent systems (MAS).
+#
+# `my-agents study init` adds every module to your spaced-repetition reviews and every
+# reading to your reading list (tag: mas-core). The Examiner quizzes due modules; the
+# Trend Scout keeps you current beyond this list. Every link was checked against arXiv
+# or the live page on 2026-10-23. Add modules freely: same shape, any order.
+#
+# Each module: what to understand (objectives), what to read, and a hands-on exercise
+# that uses this repository, so you learn by building and measuring, not only reading.
+
+modules:
+  - topic: "Agents and MAS foundations"
+    objectives:
+      - Define an agent (perceive, decide, act) and the BDI model; contrast with an LLM agent loop.
+      - "Explain classic coordination mechanisms: blackboard, contract net, voting, auctions."
+      - Explain why LLM MAS revive old MAS questions (communication cost, coordination, trust).
+    readings:
+      - title: "An Introduction to MultiAgent Systems (2nd ed.), chapters 1-2 and 6-9"
+        authors: Michael Wooldridge
+        year: 2009
+        url: "https://www.wiley.com/en-us/An+Introduction+to+MultiAgent+Systems%2C+2nd+Edition-p-9780470519462"
+    exercise: >-
+      Our board (src/my_agents/board.py) is a blackboard. Read it and write one paragraph:
+      what would a contract-net version of delegation look like here?
+
+  - topic: "Tool use and the ReAct loop"
+    objectives:
+      - Explain reason-act-observe and why interleaving beats plan-then-act on knowledge tasks.
+      - Explain how tool calls work without native function calling (our text protocol).
+    readings:
+      - title: "ReAct: Synergizing Reasoning and Acting in Language Models"
+        authors: Yao et al.
+        year: 2022
+        url: "https://arxiv.org/abs/2210.03629"
+      - title: "Toolformer: Language Models Can Teach Themselves to Use Tools"
+        authors: Schick et al.
+        year: 2023
+        url: "https://arxiv.org/abs/2302.04761"
+    exercise: >-
+      Trace one request in the dashboard and label every step as reason, act or observe.
+      Find where the loop is capped (MAX_TOOL_STEPS) and argue for a different cap.
+
+  - topic: "Agent design patterns (workflows vs agents)"
+    objectives:
+      - Name the patterns (prompt chaining, routing, parallelisation, orchestrator-workers,
+        evaluator-optimizer) and when each is the simplest thing that works.
+      - Explain when NOT to use a multi-agent system.
+    readings:
+      - title: "Building effective AI agents"
+        authors: Anthropic
+        year: 2024
+        url: "https://www.anthropic.com/research/building-effective-agents"
+    exercise: >-
+      Classify our system: which patterns does it use, and where? Then run
+      `my-agents bench run mas_core --configs router,solo_sonnet` and decide whether
+      the multi-agent version earns its cost.
+
+  - topic: "Multi-agent conversation frameworks"
+    objectives:
+      - "Compare AutoGen, CAMEL, MetaGPT and ChatDev: roles, communication protocol, control flow."
+      - Explain role-playing and standard operating procedures (SOPs) as coordination devices.
+    readings:
+      - title: "AutoGen: Enabling Next-Gen LLM Applications via Multi-Agent Conversation"
+        authors: Wu et al.
+        year: 2023
+        url: "https://arxiv.org/abs/2308.08155"
+      - title: "CAMEL: Communicative Agents for \"Mind\" Exploration of Large Language Model Society"
+        authors: Li et al.
+        year: 2023
+        url: "https://arxiv.org/abs/2303.17760"
+      - title: "MetaGPT: Meta Programming for A Multi-Agent Collaborative Framework"
+        authors: Hong et al.
+        year: 2023
+        url: "https://arxiv.org/abs/2308.00352"
+      - title: "ChatDev: Communicative Agents for Software Development"
+        authors: Qian et al.
+        year: 2023
+        url: "https://arxiv.org/abs/2307.07924"
+    exercise: >-
+      Draw our graph next to AutoGen's group chat. What does a LangGraph state machine
+      make explicit that a free-form conversation leaves implicit?
+
+  - topic: "Generative agents, memory and simulation"
+    objectives:
+      - Explain memory stream, retrieval (recency, importance, relevance) and reflection.
+      - "Contrast with our three memories: checkpointed state, agent memory, shared store."
+    readings:
+      - title: "Generative Agents: Interactive Simulacra of Human Behavior"
+        authors: Park et al.
+        year: 2023
+        url: "https://arxiv.org/abs/2304.03442"
+    exercise: >-
+      Our agent memory has no retrieval: everything is injected. Sketch how importance
+      scoring would change src/my_agents/memory.py, and what it would cost.
+
+  - topic: "Multi-agent debate and scaling the number of agents"
+    objectives:
+      - Explain how debate improves factuality and reasoning, and its failure modes
+        (degeneration of thought, conformity, cost).
+      - Explain sampling-and-voting and when more agents stop helping.
+    readings:
+      - title: "Improving Factuality and Reasoning in Language Models through Multiagent Debate"
+        authors: Du et al.
+        year: 2023
+        url: "https://arxiv.org/abs/2305.14325"
+      - title: "Encouraging Divergent Thinking in Large Language Models through Multi-Agent Debate"
+        authors: Liang et al.
+        year: 2023
+        url: "https://arxiv.org/abs/2305.19118"
+      - title: "More Agents Is All You Need"
+        authors: Li et al.
+        year: 2024
+        url: "https://arxiv.org/abs/2402.05120"
+    exercise: >-
+      Design a bench config where the Reviewer runs on the same model family as the Coder,
+      and one where it doesn't. What result would convince you that diversity matters?
+
+  - topic: "Orchestrator-workers in production"
+    objectives:
+      - Explain how Anthropic's research system plans, spawns parallel subagents and merges results.
+      - Explain token cost vs performance, and why evaluation of multi-agent systems is hard.
+    readings:
+      - title: "How we built our multi-agent research system"
+        authors: Anthropic
+        year: 2025
+        url: "https://www.anthropic.com/research/multi-agent-research-system"
+      - title: "Effective context engineering for AI agents"
+        authors: Anthropic
+        year: 2025
+        url: "https://www.anthropic.com/research/effective-context-engineering-for-ai-agents"
+    exercise: >-
+      Compare delegate_context: task vs conversation with
+      `my-agents bench run mas_core --configs orchestrator,orchestrator_shared_context`.
+      Report accuracy, tokens and cost, and explain the difference.
+
+  - topic: "Why multi-agent systems fail"
+    objectives:
+      - Name the failure categories (specification, inter-agent misalignment, verification).
+      - Diagnose failures in real traces.
+    readings:
+      - title: "Why Do Multi-Agent LLM Systems Fail?"
+        authors: Cemri et al.
+        year: 2025
+        url: "https://arxiv.org/abs/2503.13657"
+    exercise: >-
+      Take every failed trial of your last bench run and label it with the paper's taxonomy.
+      Which category dominates in this system?
+
+  - topic: "MAS safety and security"
+    objectives:
+      - Explain indirect prompt injection and how it propagates between agents.
+      - Explain defences (labelling, taint tracking, egress control, human approval) and their limits.
+      - "Name the multi-agent risk categories: miscoordination, conflict, collusion."
+    readings:
+      - title: "Not what you've signed up for: Compromising Real-World LLM-Integrated Applications with Indirect Prompt Injection"
+        authors: Greshake et al.
+        year: 2023
+        url: "https://arxiv.org/abs/2302.12173"
+      - title: "Prompt Infection: LLM-to-LLM Prompt Injection within Multi-Agent Systems"
+        authors: Lee and Tiwari
+        year: 2024
+        url: "https://arxiv.org/abs/2410.07283"
+      - title: "Multi-Agent Risks from Advanced AI"
+        authors: Hammond et al.
+        year: 2025
+        url: "https://arxiv.org/abs/2502.14143"
+    exercise: >-
+      Run `my-agents bench run injection` and write up attack success with and without each
+      defence. This is a publishable-quality experiment if you add tasks and repeats.

@@ -5,7 +5,7 @@ description: >-
 backend: claude-cli
 model: sonnet
 tools: [search_papers, save_paper, update_paper, list_papers, github_search_repos, github_repo,
-        github_list_files, github_read_file, web_search, web_fetch, tech_news]
+        github_list_files, github_read_file, web_search, web_fetch, tech_news, add_review_topic]
 system_prompt: |
   You are the Literature Surveyor.
 

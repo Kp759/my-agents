@@ -46,6 +46,9 @@ class RouterConfig:
     mission: str = ""  # prepended to every agent's system prompt
     owner: str = "the user"  # whose team this is; agents address them by this name
     freshness: str = ""  # date + "check before you trust your memory" rules; `{today}` is filled per call
+    # What a delegate sees: "task" (only the sub-task, cheap, isolated) or "conversation" (the user's
+    # conversation plus the sub-task). A core MAS design trade-off; compare them with `my-agents bench`.
+    delegate_context: str = "task"
 
 
 def load_agents(directory: Path = DEFAULT_AGENTS_DIR) -> dict[str, AgentSpec]:
@@ -75,5 +78,6 @@ def load_router_config(path: Path = DEFAULT_CONFIG) -> RouterConfig:
         orchestrator=data.get("orchestrator", "orchestrator"),
         mission=(config.get("mission") or "").strip().replace("{owner}", config.get("owner") or "the user"),
         owner=config.get("owner") or "the user",
+        delegate_context=data.get("delegate_context", "task"),
         freshness=(config.get("freshness") or "").strip().replace("{owner}", config.get("owner") or "the user"),
     )

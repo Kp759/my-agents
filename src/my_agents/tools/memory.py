@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from .. import study
 from ..store import Store
 from . import Tool
 
@@ -76,7 +77,9 @@ def tools(store: Store) -> list[Tool]:
         return rows
 
     def record_quiz_result(topic, score, gaps=None):
-        return store.insert("quiz_results", topic=topic, score=float(score), gaps=gaps)
+        result = store.insert("quiz_results", topic=topic, score=float(score), gaps=gaps)
+        r = study.review(store, topic, float(score))  # spaced repetition: when to quiz this again
+        return {**result, "next_review": r["due"], "interval_days": r["interval_days"]}
 
     def list_quiz_results(topic=None, limit=20):
         return store.list("quiz_results", {"topic": topic}, limit=limit)
@@ -132,11 +135,17 @@ def tools(store: Store) -> list[Tool]:
               "status": "str, to_read | read, optional"}, update_paper, writes=True),
         Tool("list_papers", "List saved papers.",
              {"status": "str, optional", "tag": "str, optional", "limit": "int, optional"}, list_papers),
-        Tool("record_quiz_result", "Record how the user did on a quiz topic.",
+        Tool("record_quiz_result", "Record how the user did on a quiz topic; also schedules its next review "
+             "(spaced repetition). Use the topic name exactly as due_reviews shows it.",
              {"topic": "str", "score": "float, 0 to 1", "gaps": "str, what they missed, optional"},
              record_quiz_result, writes=True),
         Tool("list_quiz_results", "List past quiz results to find weak topics.",
              {"topic": "str, optional", "limit": "int, optional"}, list_quiz_results),
+        Tool("due_reviews", "Topics due for review today (spaced repetition), weakest first, plus upcoming ones.",
+             {"limit": "int, optional"}, lambda limit=10: study.due(store, limit=int(limit))),
+        Tool("add_review_topic", "Schedule a topic for spaced-repetition quizzes (e.g. after reading a paper).",
+             {"topic": "str", "notes": "str, what to know about it, optional"},
+             lambda topic, notes=None: study.add_review(store, topic, notes), writes=True),
         Tool("set_skill", "Create or update a skill in the user's skill profile.",
              {"skill": "str", "level": "int, current level 1-5, optional", "target": "int, needed level 1-5, optional",
               "evidence": "str, optional", "plan": "str, optional"}, set_skill, writes=True),
