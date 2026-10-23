@@ -333,3 +333,20 @@ def test_mission_is_prepended():
                         router_adapter=FakeAdapter())
     ask(graph, "hi")
     assert model.calls[0][0].startswith("MISSION: get hired\n\nYou explain.")
+
+
+def test_owner_name_reaches_router_and_agents(tmp_path):
+    from my_agents.agents import load_router_config
+    cfg = tmp_path / "config.yaml"
+    cfg.write_text("owner: Dr.K\nmission: |\n  You are one of {owner}'s agents.\n"
+                   "router: {backend: fake, default_agent: explainer}\n")
+    router = load_router_config(cfg)
+    assert router.owner == "Dr.K" and router.mission == "You are one of Dr.K's agents."
+    specs = {"explainer": AgentSpec("explainer", "x", "You explain.", "fake"),
+             "examiner": AgentSpec("examiner", "y", "You quiz.", "fake")}
+    route_model, agent_model = FakeAdapter(reply="explainer"), FakeAdapter()
+    graph = build_graph(specs, router, NullTracer(), store=Store(":memory:"),
+                        adapters={"explainer": agent_model, "examiner": FakeAdapter()}, router_adapter=route_model)
+    ask(graph, "hi")
+    assert "Dr.K's request" in route_model.calls[0][0]
+    assert agent_model.calls[0][0].startswith("You are one of Dr.K's agents.")

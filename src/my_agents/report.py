@@ -182,16 +182,17 @@ def eod_facts(tracer: Tracer, store: Store, day: date, pricing: dict | None = No
     }
 
 
-EOD_PROMPT = """You write an end-of-day report for a PhD student about their team of AI agents.
+EOD_PROMPT = """You write an end-of-day report for {owner}, a PhD student, about their team of AI agents.
 You get exact facts as JSON. For each agent that did anything, write a "### @name" heading
 followed by 2-4 sentences: what it worked on, how (tools, delegations, models), and what it
 produced. Then a "### Overall" section: what got done, anything that failed, and one suggestion
 for tomorrow. Use only the facts given; do not invent work. Plain markdown, concise."""
 
 
-def eod_report(facts: dict, writer: dict | None) -> str:
+def eod_report(facts: dict, writer: dict | None, owner: str = "the user") -> str:
     o = facts["overall"]
-    lines = [f"# End-of-day report: {facts['day']}", "",
+    team = f"{owner}'s agents" if owner != "the user" else "agents"
+    lines = [f"# End-of-day report: {team}, {facts['day']}", "",
              f"{facts['user_requests']} requests · {o['model_calls']} model calls · {o['tool_calls']} tool calls · "
              f"{o['delegations']} delegations · {_k(o['input_tokens'])} in / {_k(o['output_tokens'])} out tokens · "
              f"${o['cost_usd']:.4f} API-equivalent"
@@ -211,7 +212,8 @@ def eod_report(facts: dict, writer: dict | None) -> str:
     if writer and facts["agents"]:
         try:
             adapter = make_adapter(writer["backend"], writer.get("model"), **(writer.get("options") or {}))
-            narrative = adapter.complete(EOD_PROMPT, [{"role": "user", "content": json.dumps(facts, default=str)}]).text
+            narrative = adapter.complete(EOD_PROMPT.format(owner=owner),
+                                         [{"role": "user", "content": json.dumps(facts, default=str)}]).text
         except Exception as e:  # the table above is still useful without the prose
             narrative = f"_(narrative unavailable: {e})_"
     if narrative:

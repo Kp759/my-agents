@@ -83,7 +83,7 @@ svg text { fill: var(--ink); font: 12px -apple-system, sans-serif; }
 </head>
 <body>
 <header>
-  <h1>My <span>Agents</span></h1>
+  <h1 id="brand">My <span>Agents</span></h1>
   <nav id="tabs"></nav>
   <span class="small muted" style="margin-left:auto"><span class="live-dot"></span>live · refreshes every 2 s</span>
 </header>
@@ -401,6 +401,13 @@ function learn() {
   <p><b>Try this:</b> run the same request with <code>entry: router</code> and <code>entry: orchestrator</code> in <code>config.yaml</code> and compare model calls, tokens and cost in the Requests tab. That is a small MAS efficiency experiment.</p>
   </div>`;
 }
+
+// Brand the page with the owner's name from config.yaml.
+api("/api/agents").then((d) => {
+  if (!d.owner || d.owner === "the user") return;
+  $("#brand").innerHTML = `${esc(d.owner)}'s <span>Agents</span>`;
+  document.title = `${d.owner}'s Agents`;
+});
 
 window.addEventListener("hashchange", () => { const t = location.hash.slice(1); if (t && t !== tab) go(t); });
 renderTabs();

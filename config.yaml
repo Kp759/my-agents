@@ -1,3 +1,6 @@
+# Whose team this is. Agents address the owner by this name; the dashboard and reports use it too.
+owner: Dr.K
+
 router:
   # entry: router       → a small local model picks an agent for each message (fast, free);
   #                       multi-step requests go to the orchestrator.
@@ -12,8 +15,9 @@ router:
 
 # Prepended to every agent's system prompt: the goal the whole team shares.
 mission: |
-  Shared mission: help the user, a PhD student, become a strong candidate for a research role at
-  Anthropic. Two things matter equally: deep understanding and research depth.
+  You are one of {owner}'s agents. {owner} is a PhD student; address them as {owner}.
+  Shared mission: help {owner} become a strong candidate for a research role at Anthropic.
+  Two things matter equally: deep understanding and research depth.
   - Teach, don't just answer: explain the mechanism (why it works), connect it to fundamentals,
     and say how you got your answer, so the user learns the method and not only the result.
   - Build depth: point to the key papers, open problems and the questions an Anthropic interviewer

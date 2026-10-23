@@ -1,4 +1,4 @@
-# My Agents
+# Dr.K's Agents
 
 An open-source, **transparent** multi-agent system for PhD study, built with LangGraph. It runs on the AI subscriptions you already have (Claude, ChatGPT) and on free local models, with no API keys needed.
 
@@ -66,6 +66,7 @@ python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"
 
 - **Agents:** one YAML file each in `agents/` (backend, model, role prompt, tools, delegates). Copy `agents/_TEMPLATE.yaml` to add one.
 - **`config.yaml`:**
+  - `owner`: whose team this is (`Dr.K`). Agents address the owner by this name, and the dashboard and reports use it.
   - `router.entry`: `router` (a cheap local router) or `orchestrator` (every message goes through the main agent).
   - `mission`: the goal prepended to every agent's prompt.
   - `eod`: which model writes the end-of-day prose.

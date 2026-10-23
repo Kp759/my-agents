@@ -156,6 +156,9 @@ def cmd_chat(args) -> int:
     session = Session(verbose=not args.quiet)
     names = set(load_agents())
     thread_id = args.thread or uuid.uuid4().hex[:8]
+    owner = _config().get("owner")
+    if owner:
+        print(f"{owner}'s agents are ready.")
     print(f"{CHAT_HELP}\nthread: {thread_id}  (resume later with: my-agents chat --thread {thread_id})")
     while True:
         try:
@@ -228,7 +231,7 @@ def cmd_eod(args) -> int:
     cfg = _config()
     store = Store()
     facts = eod_facts(Tracer(), store, day, _pricing())
-    report = eod_report(facts, None if args.no_llm else cfg.get("eod"))
+    report = eod_report(facts, None if args.no_llm else cfg.get("eod"), owner=cfg.get("owner") or "the user")
     out = Path(store.path).parent / "eod" / f"{day.isoformat()}.md"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(report)
@@ -257,7 +260,8 @@ def cmd_tools(_args) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(prog="my-agents", description="Personal PhD agents on any model.")
+    owner = _config().get("owner") or "My"
+    p = argparse.ArgumentParser(prog="my-agents", description=f"{owner}'s agents: a transparent multi-agent team.")
     sub = p.add_subparsers(dest="cmd", required=True)
     sub.add_parser("doctor", help="check which backends are reachable").set_defaults(fn=cmd_doctor)
     sub.add_parser("agents", help="list agents").set_defaults(fn=cmd_agents)

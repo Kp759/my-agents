@@ -100,6 +100,7 @@ class API:
             "router": {"entry": router.entry, "backend": router.backend, "model": router.model,
                        "default_agent": router.default_agent, "orchestrator": router.orchestrator},
             "mission": router.mission,
+            "owner": router.owner,
             "agents": [{
                 "name": s.name, "description": s.description, "backend": s.backend, "model": s.model,
                 "tools": s.tools, "delegates": s.delegates, "board_context": s.board_context,
@@ -120,7 +121,8 @@ class API:
         path = Path(self.store.path).parent / "eod" / f"{d.isoformat()}.md"
         facts = eod_facts(self.tracer, self.store, d, self._pricing())
         if generate:
-            report = eod_report(facts, self._config().get("eod") if llm else None)
+            report = eod_report(facts, self._config().get("eod") if llm else None,
+                                owner=self._config().get("owner") or "the user")
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(report)
         return {"day": d.isoformat(), "facts": facts, "report": path.read_text() if path.exists() else None}

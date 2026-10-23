@@ -66,7 +66,7 @@ class State(TypedDict, total=False):
     writes_ok: bool  # the user approved all writes for the rest of this request
 
 
-ROUTER_PROMPT = """You route a PhD student's request to exactly one agent.
+ROUTER_PROMPT = """You route {owner}'s request (a PhD student) to exactly one agent.
 
 Agents:
 {agents}
@@ -137,6 +137,7 @@ def build_graph(
     adapters = adapters or {name: spec.adapter() for name, spec in agents.items()}
     router_adapter = router_adapter or make_adapter(router.backend, router.model, **router.options)
     router_system = ROUTER_PROMPT.format(
+        owner=router.owner,
         agents="\n".join(f"- {s.name}: {s.description}" for s in agents.values())
     )
 
