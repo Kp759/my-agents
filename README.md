@@ -66,6 +66,7 @@ python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"
 
 - **Agents:** one YAML file each in `agents/` (backend, model, role prompt, tools, delegates). Copy `agents/_TEMPLATE.yaml` to add one.
 - **`config.yaml`:**
+  - `accounts`: which Claude and Codex accounts the agents use (`CLAUDE_CONFIG_DIR` / `CODEX_HOME` folders). Pinned so the agents use the same accounts whichever terminal starts them; `my-agents doctor` shows them.
   - `owner`: whose team this is (`Dr.K`). Agents address the owner by this name, and the dashboard and reports use it.
   - `router.entry`: `router` (a cheap local router) or `orchestrator` (every message goes through the main agent).
   - `mission`: the goal prepended to every agent's prompt.

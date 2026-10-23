@@ -12,6 +12,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 
+from ..accounts import claude_env, codex_env
 from ..guardrails import check_path
 from . import Tool
 
@@ -70,7 +71,7 @@ def run_coding_task(repo: str, instructions: str, engine: str = "claude") -> dic
         proc = subprocess.run(
             ["claude", "-p", "--output-format", "json", "--permission-mode", "acceptEdits",
              "--allowedTools", "Read", "Edit", "Write", "Glob", "Grep", "--no-session-persistence"],
-            input=instructions, capture_output=True, text=True, cwd=r, timeout=1800,
+            input=instructions, capture_output=True, text=True, cwd=r, timeout=1800, env=claude_env(),
         )
         try:
             summary = json.loads(proc.stdout).get("result", "")
@@ -82,7 +83,7 @@ def run_coding_task(repo: str, instructions: str, engine: str = "claude") -> dic
             proc = subprocess.run(
                 ["codex", "exec", "--ephemeral", "--sandbox", "workspace-write", "--color", "never",
                  *CODEX_LOCKDOWN, "-C", str(r), "-o", str(out), "-"],
-                input=instructions, capture_output=True, text=True, timeout=1800,
+                input=instructions, capture_output=True, text=True, timeout=1800, env=codex_env(),
             )
             summary = out.read_text() if out.exists() else proc.stderr[-2000:]
     else:

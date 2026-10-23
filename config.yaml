@@ -1,6 +1,13 @@
 # Whose team this is. Agents address the owner by this name; the dashboard and reports use it too.
 owner: Dr.K
 
+# Which accounts the agents use. The CLIs pick an account from these folders;
+# pinning them here means the agents always use these accounts, whichever terminal
+# starts them. API-key variables are ignored so calls stay on the subscription plans.
+accounts:
+  claude_config_dir: ~/.claude-njit   # lizzie.lyc@gmail.com, Max plan
+  codex_home: ~/.codex-njit
+
 router:
   # entry: router       → a small local model picks an agent for each message (fast, free);
   #                       multi-step requests go to the orchestrator.

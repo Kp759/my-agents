@@ -224,3 +224,17 @@ def test_dashboard_rejects_foreign_hosts_and_origins(tmp_path, monkeypatch):
         assert e.value.code == 403
     finally:
         server.shutdown()
+
+
+def test_cli_accounts_are_pinned_and_api_keys_dropped(monkeypatch, tmp_path):
+    from my_agents import accounts
+
+    cfg = tmp_path / "config.yaml"
+    cfg.write_text("accounts:\n  claude_config_dir: ~/.claude-test\n  codex_home: ~/.codex-test\n")
+    monkeypatch.setattr(accounts, "CONFIG", cfg)
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", "/somewhere/else")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-should-not-be-used")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-should-not-be-used")
+    c, x = accounts.claude_env(), accounts.codex_env()
+    assert c["CLAUDE_CONFIG_DIR"].endswith(".claude-test") and "ANTHROPIC_API_KEY" not in c
+    assert x["CODEX_HOME"].endswith(".codex-test") and "OPENAI_API_KEY" not in x

@@ -119,6 +119,11 @@ def cmd_doctor(_args) -> int:
         print(f"  {'✓' if up else '✗'} {backend:<10} {model or '(default)'}")
     if not ok:
         print("\nInstall or start the missing backends, or change them in agents/*.yaml and config.yaml.")
+    from .accounts import describe
+
+    print("\naccounts (pinned in config.yaml → accounts):")
+    for line in describe():
+        print(f"  {line}")
     return 0 if ok else 1
 
 

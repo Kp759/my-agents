@@ -11,6 +11,7 @@ import subprocess
 import tempfile
 import time
 
+from ..accounts import claude_env
 from .base import AdapterError, Completion, Message, on_path, render_transcript
 
 
@@ -41,7 +42,7 @@ class ClaudeCLIAdapter:
             try:
                 proc = subprocess.run(
                     cmd, input=render_transcript(messages), capture_output=True,
-                    text=True, cwd=cwd, timeout=self.timeout,
+                    text=True, cwd=cwd, timeout=self.timeout, env=claude_env(),
                 )
             except subprocess.TimeoutExpired as e:
                 raise AdapterError(f"claude timed out after {self.timeout}s") from e

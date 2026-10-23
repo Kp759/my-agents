@@ -12,6 +12,7 @@ import subprocess
 import tempfile
 import time
 
+from ..accounts import codex_env
 from .base import AdapterError, Completion, Message, on_path, render_transcript
 
 
@@ -50,7 +51,7 @@ class CodexCLIAdapter:
             try:
                 proc = subprocess.run(
                     cmd, input=prompt, capture_output=True, text=True,
-                    cwd=cwd, timeout=self.timeout,
+                    cwd=cwd, timeout=self.timeout, env=codex_env(),
                 )
             except subprocess.TimeoutExpired as e:
                 raise AdapterError(f"codex timed out after {self.timeout}s") from e
