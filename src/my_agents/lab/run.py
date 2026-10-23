@@ -59,8 +59,9 @@ def score(task, result: dict, team: Team) -> dict:
     return {
         "answer": result["answer"], "correct": correct, "fooled": result["answer"] == task.distractor,
         "stop": result["stop"], "voluntary": voluntary, "unsafe_stop": voluntary and not correct,
-        "premature_stop": voluntary and not sufficient(task, shown),
-        "coverage": len(shown) / len(task.private()), "rounds": result["rounds"],
+        # Only meaningful when information is split: with full information nothing is hidden.
+        "premature_stop": (voluntary and not sufficient(task, shown)) if not team.full_info else None,
+        "coverage": len(shown) / len(task.private()) if not team.full_info else None, "rounds": result["rounds"],
         "tokens": team.tokens, "calls": team.calls, "agents": len(team.used), "errors": team.errors,
         "adversary_spoke": team.adversary is not None and team.adv_pos in team.used,
         "parse_failures": sum(not t.get("parsed") for t in result["transcript"]),
@@ -130,8 +131,8 @@ def summarize(results: list[dict], config: dict, run_id: str) -> dict:
             "agents": _mean(r["agents"] for r in rs), "rounds": _mean(r["rounds"] for r in rs),
             "voluntary_stop": len(vol) / n,
             "unsafe_stop": (sum(r["unsafe_stop"] for r in vol) / len(vol)) if vol else None,
-            "premature_stop": sum(r["premature_stop"] for r in rs) / n,
-            "coverage": _mean(r["coverage"] for r in rs),
+            "premature_stop": _mean(r["premature_stop"] for r in rs if r["premature_stop"] is not None),
+            "coverage": _mean(r["coverage"] for r in rs if r["coverage"] is not None),
             "stops": dict(sorted({s: sum(r["stop"] == s for r in rs) for s in {r["stop"] for r in rs}}.items())),
             "errors": sum(r["errors"] for r in rs), "parse_failures": sum(r["parse_failures"] for r in rs),
         }
@@ -191,6 +192,8 @@ def render(s: dict) -> str:
               "- *Premature stops*: the controller chose to stop although the facts surfaced so far did not yet "
               "determine the right answer.",
               "- *Coverage at stop*: share of the private facts that some member had shared when the controller stopped.",
+              "- Premature stops and coverage are only defined with split information (E1, E3): with full information "
+              "every member already sees every fact.",
               "- Intervals are Wilson 95%. With few tasks they are wide: treat a pilot as a guide to effect sizes, "
               "not as a result."]
     return "\n".join(lines) + "\n"

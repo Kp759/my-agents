@@ -148,3 +148,10 @@ def test_every_lab_call_is_traced_with_its_exact_prompt():
     assert "Decision rule" in steps[0]["io"]["system"] and "Your facts" in steps[0]["io"]["messages"][0]["content"]
     with pytest.raises(ValueError):
         lab.trial_steps(out["id"], "../x")
+
+
+def test_coverage_metrics_only_apply_to_split_information():
+    t = make_task(8)
+    team = Team(t, thinker(share=False), full_info=True)
+    row = lab.score(t, consensus(team), team)
+    assert row["coverage"] is None and row["premature_stop"] is None
