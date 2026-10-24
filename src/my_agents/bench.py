@@ -288,6 +288,7 @@ def run_trial(suite: dict, config_name: str, task: dict, rep: int, tracer: Bench
     r = config.get("router") or {}
     router = replace(router, entry=config.get("entry", "router") if config.get("entry") != "solo" else "router",
                      delegate_context=config.get("delegate_context", "task"),
+                     grounding=config.get("grounding", "off"),  # search-first is a knob to compare, off by default
                      backend=r.get("backend", router.backend), model=r.get("model", router.model),
                      options=r.get("options", router.options),
                      default_agent=router.default_agent if router.default_agent in team else next(iter(team)))

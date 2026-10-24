@@ -364,3 +364,107 @@ def test_parameters_with_defaults_are_marked_optional():
         for name, desc in t.params.items():
             if "default" in desc:
                 assert "optional" in desc, f"{t.name}.{name}: {desc!r}"
+
+
+# ---- search first (grounding) --------------------------------------------------------
+
+
+def grounded(agent_replies, ground_reply, specs=None, entry="router", search=None):
+    """A graph with grounding: auto, a fake web_search, and a router that answers both prompts."""
+    from my_agents.graph import GROUND_PROMPT
+
+    searches = []
+
+    def web_search(query, limit=8, recency=None, deep=True):
+        searches.append(query)
+        if search:
+            return search(query)
+        return [{"title": "Claude 9 released", "url": "https://example.com/claude9", "snippet": "Out today."}]
+    box = {"web_search": Tool("web_search", "search", {"query": "str"}, web_search, untrusted=True),
+           "add_task": Tool("add_task", "add", {"title": "str"}, lambda title: {"id": 1}, writes=True)}
+    specs = specs or {
+        "explainer": AgentSpec("explainer", "explains", "You explain.", "fake", tools=["web_search", "add_task"]),
+        "examiner": AgentSpec("examiner", "quizzes", "You quiz.", "fake"),
+    }
+    router_calls = []
+
+    def route_or_ground(system, messages):
+        router_calls.append(system)
+        return ground_reply if system == GROUND_PROMPT else "explainer"
+    adapters = {n: (agent_replies[n] if n in agent_replies else FakeAdapter(reply=f"reply from {n}")) for n in specs}
+    tracer = NullTracer()
+    router = RouterConfig("fake", None, default_agent=next(iter(specs)), entry=entry, grounding="auto")
+    graph = build_graph(specs, router, tracer, store=Store(":memory:"), adapters=adapters, toolbox=box,
+                        router_adapter=FakeAdapter(reply=route_or_ground))
+    return graph, adapters, tracer, searches
+
+
+def test_search_first_puts_results_before_the_agent_answers():
+    graph, adapters, tracer, searches = grounded({}, "SEARCH: latest Claude model")
+    out = ask(graph, "what's the newest Claude model?")
+    assert searches == ["latest Claude model"]
+    seen = adapters["explainer"].calls[0][1]
+    assert "Searched first" in seen[-1]["content"] and "Claude 9 released" in seen[-1]["content"]
+    assert "check the sources against your own knowledge" in seen[-1]["content"]
+    assert seen[0]["content"] == "what's the newest Claude model?"  # the question comes first
+    assert [r["node"] for r in tracer.rows] == ["route", "ground", "tools", "explainer"]
+    assert out["tainted"] and out["sources"]
+    assert all(format_row(r) for r in tracer.rows)
+
+
+def test_no_search_when_the_router_says_no():
+    graph, adapters, tracer, searches = grounded({}, "NO")
+    ask(graph, "add a task to call the dentist")
+    assert searches == [] and len(adapters["explainer"].calls[0][1]) == 1
+    assert [r["node"] for r in tracer.rows] == ["route", "ground", "explainer"]
+
+
+def test_agents_without_web_search_are_not_grounded():
+    graph, _, tracer, searches = grounded({}, "SEARCH: x")
+    ask(graph, "quiz me", forced="examiner")
+    assert searches == [] and "ground" not in [r["node"] for r in tracer.rows]
+
+
+def test_search_results_stay_in_view_across_tool_steps_and_arm_the_taint_gate():
+    agent = script(call("add_task", title="read the Claude 9 post"), "Done.")
+    graph, _, _, _ = grounded({"explainer": agent}, "SEARCH: claude 9")
+    out = ask(graph, "what's new with Claude?")
+    assert "__interrupt__" in out  # a write after reading search results needs approval
+    out = graph.invoke(Command(resume="y"), {"configurable": {"thread_id": "t1", "request_id": "r2"}})
+    assert out["messages"][-1]["content"] == "Done."
+    assert "Searched first" in agent.calls[1][1][1]["content"]  # still there on the second step
+
+
+def test_a_failed_search_does_not_break_the_answer():
+    def boom(_q):
+        raise RuntimeError("offline")
+    graph, adapters, tracer, searches = grounded({}, "SEARCH: x", search=boom)
+    out = ask(graph, "who won the Turing award this year?")
+    assert out["messages"][-1]["content"] == "reply from explainer"
+    assert len(adapters["explainer"].calls[0][1]) == 1 and not out.get("tainted")
+    assert next(r for r in tracer.rows if r["node"] == "tools").get("error")
+
+
+def test_delegates_are_grounded_on_their_own_task():
+    specs = {
+        "orchestrator": AgentSpec("orchestrator", "lead", "You lead.", "fake", delegates=["explainer"]),
+        "explainer": AgentSpec("explainer", "explains", "You explain.", "fake", tools=["web_search"]),
+    }
+    orch = script(call("delegate", agent="explainer", task="what is new in LangGraph 1.2?"), "Summary.")
+    graph, adapters, _, searches = grounded({"orchestrator": orch}, "SEARCH: LangGraph 1.2 release", specs=specs,
+                                            entry="orchestrator")
+    ask(graph, "brief me on LangGraph")
+    assert searches == ["LangGraph 1.2 release"]  # orchestrator has no web_search; the delegate searched
+    assert "Searched first" in adapters["explainer"].calls[0][1][-1]["content"]
+
+
+def test_parse_ground():
+    from my_agents.graph import parse_ground
+    assert parse_ground("SEARCH: qwen 3.5 release date") == "qwen 3.5 release date"
+    assert parse_ground('**Search:** "best pizza near NJIT"') == "best pizza near NJIT"
+    assert parse_ground("NO") is None and parse_ground("hmm, not sure") is None
+
+
+def test_grounding_is_read_from_config_and_off_by_default():
+    assert RouterConfig("fake", None, "x").grounding == "off"
+    assert load_router_config().grounding in ("auto", "off")

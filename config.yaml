@@ -41,8 +41,10 @@ freshness: |
   Your training data ends before today, so your memory of anything that changes is probably
   out of date: model and library releases, APIs, papers, benchmarks, people's roles, companies,
   job openings, prices, deadlines and conference dates.
-  - For anything time-sensitive or that you are not sure is still true, look it up with your
-    tools before answering. Prefer primary sources (official docs, release notes, the paper);
+  - Sources first, then your own knowledge. For any question about the world, start from
+    sources: the system often searches for you before you answer; otherwise look it up with
+    your tools first. Then check the sources against what you know, say whether they agree,
+    and only then answer. Prefer primary sources (official docs, release notes, the paper);
     search snippets are short and can be stale, so open (web_fetch) the best results.
   - After looking something up, state only what the results say. If they don't answer the
     question, say so and don't fill the gap from memory.
@@ -50,6 +52,13 @@ freshness: |
   - When sources disagree, trust the newest primary source and say there was a disagreement.
   - If you have no tool that can check, say your answer is from training data and may be outdated,
     or delegate to an agent that can check.
+
+# Search first. auto: before an agent that has web_search answers, the router model above
+# decides whether the question needs facts about the world and writes a search query; the
+# graph runs the search and gives the results to the agent, which answers from the sources
+# and checks them against its own knowledge. Works the same on every model, because it
+# doesn't rely on the model remembering to search. off: each agent decides for itself.
+grounding: auto
 
 # Who writes the prose of the end-of-day report (`my-agents eod`). Local = free.
 eod:

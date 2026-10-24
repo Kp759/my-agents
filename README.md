@@ -150,6 +150,8 @@ Every model stops learning at its training cutoff, so agents never rely on memor
 | `search_papers`, `trending_papers` | arXiv / OpenAlex, Hugging Face daily papers |
 | `github_*` | Repos, releases, issues, code |
 
+**Search first, then verify** (`config.yaml → grounding: auto`). Agents don't have to remember to search: when an agent that has `web_search` starts on a question, the local router model decides (free, under a second) whether it needs facts about the world and writes a query. The graph runs the search and gives the results to the agent, which answers in three steps: from the sources, then checked against its own knowledge ("confirmed", or what disagrees and which it trusts), then the answer with dated citations, marking anything unverified. Personal questions (calendar, tasks), actions, quizzes and small talk skip the search. `grounding: off` leaves it to each agent.
+
 Each lookup shows in the timeline, so you can see where an answer came from.
 
 ## GitHub

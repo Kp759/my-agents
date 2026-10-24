@@ -41,6 +41,8 @@ DEEP_CHARS = 1_000  # passage characters kept per page (tool results are capped 
 DEEP_TIMEOUT = 15  # seconds for all deep reads together
 STOPWORDS = set("the a an and or of to in on for with what which who when where how is are was were did does "
                 "do latest recent most new newest current about from by at as it its this that be".split())
+GENERIC = set("version versions release released releases date dates today news update updates best good "
+              "top guide tutorial explained vs versus compare comparison difference between".split())
 MAX_REDIRECTS = 5
 TEXT_TYPES = ("text/html", "text/plain", "text/markdown", "application/xhtml+xml", "application/json",
               "application/xml", "text/xml", "application/rss+xml", "application/atom+xml")
@@ -142,6 +144,26 @@ def _deep_read(results: list[dict], query: str) -> tuple[list[dict], list[dict]]
     return pages, skipped
 
 
+def _key_terms(query: str) -> list[str]:
+    """The specific words of a query (names, technical terms), in order: not stopwords or generic words."""
+    words = re.findall(r"[\w.+#-]+", query.lower())
+    return [w for w in words if w not in STOPWORDS and w not in GENERIC and len(w) > 2]
+
+
+def _on_topic(results: list[dict], query: str) -> bool:
+    """Does any result mention a key term? Engines sometimes drop the rare word and return generic news."""
+    keys = _key_terms(query)
+    text = " ".join(f"{r.get('title', '')} {r.get('snippet', '')} {r.get('url', '')}" for r in results).lower()
+    return not keys or any(k in text for k in keys)
+
+
+def _keyword_query(query: str) -> str:
+    """Key terms first, then the rest, without filler: 'latest version of X and release date' -> 'x version release date'."""
+    words = [w for w in re.findall(r"[\w.+#-]+", query.lower()) if w not in STOPWORDS]
+    keys = _key_terms(query)
+    return " ".join(dict.fromkeys(keys + words))
+
+
 def web_search(query: str, limit: int = 8, recency: str | None = None, deep: bool = True) -> dict:
     if recency not in (None, "", "day", "week", "month", "year"):
         raise ValueError("recency must be day, week, month or year")
@@ -149,6 +171,9 @@ def web_search(query: str, limit: int = 8, recency: str | None = None, deep: boo
     for engine, search in (("duckduckgo", _ddg), ("bing", _bing)):
         try:
             results = search(query, recency)
+            if results and not _on_topic(results, query) and _keyword_query(query) != query.lower():
+                retry = search(_keyword_query(query), recency)  # off-topic: try again, key terms first
+                results = retry if retry and _on_topic(retry, query) else results
         except (HTTPStatusError, OSError) as e:
             errors.append(f"{engine}: {e}")
             continue

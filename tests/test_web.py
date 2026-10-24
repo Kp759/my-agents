@@ -170,3 +170,21 @@ def test_shipped_config_gives_knowledge_agents_live_web_access():
     agents = load_agents()
     for name in ("orchestrator", "explainer", "lit_surveyor", "trend_scout", "career_coach", "coder", "writer"):
         assert {"web_search", "web_fetch"} <= set(agents[name].tools), name
+
+
+def test_off_topic_results_are_retried_with_key_terms_first(monkeypatch):
+    queries = []
+    news = [{"title": "Breaking News, Latest Headlines", "url": "https://news.example/", "snippet": "Top stories."}]
+    hit = [{"title": "LangGraph 1.2 released", "url": "https://pypi.org/project/langgraph/", "snippet": "Version 1.2"}]
+
+    def bing(query, recency):
+        queries.append(query)
+        return hit if query.startswith("langgraph") else news
+    monkeypatch.setattr(web, "_ddg", lambda q, r: [])
+    monkeypatch.setattr(web, "_bing", bing)
+    out = web.web_search("latest version of langgraph and release date", deep=False)
+    assert queries == ["latest version of langgraph and release date", "langgraph version release date"]
+    assert out["results"] == hit
+    queries.clear()
+    web.web_search("langgraph checkpointer", deep=False)
+    assert queries == ["langgraph checkpointer"]  # on topic: no retry

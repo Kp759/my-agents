@@ -22,7 +22,12 @@
    conversation or a tool result) needs approval.
 7. Every prompt starts with today's date and the freshness rules (config.yaml →
    `freshness`), because a model's own knowledge stops at its training cutoff.
-8. Every step is traced and the graph posts progress to the shared board.
+8. Search first (config.yaml → `grounding: auto`): when an agent with web_search starts a
+   job, the router model decides whether the question needs facts about the world and
+   writes a query; the graph runs the search and hands the results to the agent, which
+   answers from the sources and checks them against its own knowledge. This doesn't
+   depend on the model remembering to search, which small models often don't.
+9. Every step is traced and the graph posts progress to the shared board.
 
 Conversation state is checkpointed per `thread_id`, so chats survive restarts
 when a SQLite checkpointer is used.
@@ -32,6 +37,7 @@ from __future__ import annotations
 
 import json
 import operator
+import re
 import time
 import uuid
 from datetime import datetime
@@ -79,6 +85,52 @@ Agents:
 {agents}
 
 Reply with only the agent's name, nothing else."""
+
+
+GROUND_PROMPT = """Decide whether answering the latest message needs a web search first.
+
+Reply NO only for these:
+- the user's own data: their calendar, tasks, notes, experiments, drafts, memory, quiz scores;
+- actions: add, remind, save, delete, write, edit, run code, quiz me;
+- greetings, thanks and small talk; creative writing (poems, stories); plain arithmetic;
+- follow-ups that only ask about the previous answer ("shorter please", "why?").
+
+Everything else gets a search, including explanations of concepts, how-tos, technical questions,
+comparisons, people, products, papers, news, prices, places and weather. When in doubt, search.
+
+Examples:
+"explain how attention works" -> SEARCH: how attention works in transformers explained
+"how do I undo the last git commit?" -> SEARCH: git undo last commit
+"what's on my calendar tomorrow?" -> NO
+"quiz me on multi-agent debate" -> NO
+
+Reply with exactly one line, nothing else:
+SEARCH: <keywords for a search engine, 2-8 words, names first, e.g. "langgraph latest version">
+or
+NO"""
+
+GROUND_NOTE = """## Searched first
+Before you answer, the system searched the web for "{query}":
+
+{results}
+
+Answer in this order:
+1. Sources first: base your answer on these results. If they are thin, old or off-topic, open the
+   best one with web_fetch or search again with a better query (if you have those tools).
+2. Then verify: check the sources against your own knowledge and what you remember about the user.
+   If they agree, say the answer is confirmed. If they disagree, say so plainly and explain which you
+   trust and why (for anything that changes, a newer primary source beats your memory).
+3. Answer and cite the sources with their dates. Mark anything that comes only from your own
+   knowledge as "(from model knowledge, not verified)"."""
+
+
+def parse_ground(reply: str) -> str | None:
+    """The search query from the router's 'SEARCH: …' line, or None for 'NO' or anything unclear."""
+    for line in reply.strip().splitlines():
+        m = re.match(r"\W*search\W*:\s*(.+)", line, re.I)
+        if m:
+            return m.group(1).strip(' "*`\'')[:200] or None
+    return None
 
 
 def parse_route(reply: str, names: list[str], default: str) -> str:
@@ -202,6 +254,43 @@ def build_graph(
                       input_preview=preview(last["content"]), decision=how, latency_ms=0)
         return {**fresh, "agent": chosen}
 
+    # ---- search first --------------------------------------------------------------
+    def ground(state: State, spec: AgentSpec, task: str | None, ids: dict) -> tuple[Message, str] | None:
+        """Run the search an answer should start from; return (message for the agent, raw result) or None."""
+        if task:
+            question, context = task, []
+        else:
+            question, context = state["messages"][-1]["content"], state["messages"][-4:-1]
+        convo = "".join(f"{m['role']}: {m['content'][:300]}\n" for m in context)
+        ask = (f"Conversation so far:\n{convo}\nLatest message: " if convo else "Latest message: ") + question
+        try:
+            completion = router_adapter.complete(GROUND_PROMPT, [{"role": "user", "content": ask}])
+        except AdapterError as e:
+            tracer.record(**ids, node="ground", agent=spec.name, backend=router_adapter.name,
+                          model=router_adapter.model, error=str(e), decision="no search (router failed)")
+            return None
+        query = parse_ground(completion.text)
+        tracer.record(**ids, node="ground", agent=spec.name, backend=router_adapter.name, model=router_adapter.model,
+                      prompt_chars=len(ask), completion=completion, input_preview=preview(question),
+                      decision=f"search: {query}" if query else "no search needed",
+                      io={"system": GROUND_PROMPT, "messages": [{"role": "user", "content": ask}],
+                          "output": completion.text})
+        if not query:
+            return None
+        tool, args, start = agent_tools[spec.name]["web_search"], {"query": query}, time.monotonic()
+        try:
+            result, error = tool.run(args), None
+        except Exception as e:  # no results is not fatal: the agent can still search or answer
+            result, error = None, f"{type(e).__name__}: {e}"
+        tracer.record(**ids, node="tools", agent=spec.name, backend="tool", model=None, tool="web_search",
+                      args=preview(json.dumps(args)), error=error, latency_ms=int((time.monotonic() - start) * 1000),
+                      output_preview=preview(json.dumps(result, default=str)) if error is None else None,
+                      io={"args": args, "result": result if error is None else error})
+        if error:
+            return None
+        content = format_result("web_search", result, untrusted=bool(labels and tool.untrusted))
+        return {"role": "user", "content": GROUND_NOTE.format(query=query, results=content)}, content
+
     # ---- agents --------------------------------------------------------------------
     def make_agent_node(spec: AgentSpec):
         adapter = adapters[spec.name]
@@ -210,9 +299,16 @@ def build_graph(
         def node(state: State, config) -> State:
             ids = _ids(config)
             task, scratch, steps = state.get("task"), state.get("scratch") or [], state.get("steps", 0)
-            inputs = _job_inputs(state, task, router.delegate_context) + scratch
+            searched: State = {}  # state updates from searching first
             if not scratch:  # first step on this job
                 board.post(spec.name, "start", task or state["messages"][-1]["content"], ids["thread_id"])
+                if router.grounding == "auto" and "web_search" in agent_tools[spec.name]:
+                    found = ground(state, spec, task, ids)
+                    if found:  # the results open the job's scratch, so they stay in view for every step
+                        scratch = [found[0]]
+                        searched = {"scratch": scratch, "tainted": True,
+                                    "sources": (state.get("sources") or []) + [found[1]]}
+            inputs = _job_inputs(state, task, router.delegate_context) + scratch
 
             # Prompt = shared mission + today's date + the agent's role + its memory (+ board) + tools.
             system = mission + freshness() + spec.system_prompt.rstrip() + memory.for_prompt(spec.name)
@@ -240,7 +336,7 @@ def build_graph(
                           io={"system": system, "messages": inputs, "output": completion.text})
 
             if call and steps < MAX_TOOL_STEPS:
-                return {"scratch": scratch + [{"role": "assistant", "content": completion.text}],
+                return {**searched, "scratch": scratch + [{"role": "assistant", "content": completion.text}],
                         "pending_call": call, "steps": steps + 1}
 
             final = completion.text
@@ -253,8 +349,9 @@ def build_graph(
                 caller = stack[-1]
                 tracer.record(**ids, node="return", agent=spec.name, backend="graph", model=None, latency_ms=0,
                               decision=f"{spec.name} → {caller['agent']}", output_preview=preview(final))
-                tainted = bool(state.get("tainted"))
+                tainted = bool(state.get("tainted") or searched)
                 return {
+                    **({"sources": searched["sources"]} if searched else {}),
                     "agent": caller["agent"],
                     "task": caller["task"],
                     "steps": caller["steps"],
@@ -267,8 +364,8 @@ def build_graph(
                                                                   untrusted=labels and tainted)}
                     ],
                 }
-            return {"messages": [{"role": "assistant", "content": final, "agent": spec.name}], "scratch": [],
-                    "pending_call": None, "done": True}
+            return {**searched, "messages": [{"role": "assistant", "content": final, "agent": spec.name}],
+                    "scratch": [], "pending_call": None, "done": True}
 
         return node
 

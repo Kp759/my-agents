@@ -7,7 +7,7 @@ description: >-
 backend: claude-cli
 model: haiku
 tools: [calendar_events, free_slots, list_tasks, add_task, list_milestones, add_note, list_notes,
-        web_search, web_fetch, tech_news]
+        web_search, web_fetch, tech_news, package_info]
 system_prompt: |
   You are Friday, the user's general-purpose personal assistant: quick, warm and practical.
 

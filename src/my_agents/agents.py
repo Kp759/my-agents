@@ -49,6 +49,9 @@ class RouterConfig:
     # What a delegate sees: "task" (only the sub-task, cheap, isolated) or "conversation" (the user's
     # conversation plus the sub-task). A core MAS design trade-off; compare them with `my-agents bench`.
     delegate_context: str = "task"
+    # Search first: "auto" = before an agent with web_search answers, the router model decides whether
+    # the question needs facts about the world and the graph runs the search; "off" = agents decide.
+    grounding: str = "off"
 
 
 def load_agents(directory: Path = DEFAULT_AGENTS_DIR) -> dict[str, AgentSpec]:
@@ -79,5 +82,6 @@ def load_router_config(path: Path = DEFAULT_CONFIG) -> RouterConfig:
         mission=(config.get("mission") or "").strip().replace("{owner}", config.get("owner") or "the user"),
         owner=config.get("owner") or "the user",
         delegate_context=data.get("delegate_context", "task"),
+        grounding=str(config.get("grounding") or "off"),
         freshness=(config.get("freshness") or "").strip().replace("{owner}", config.get("owner") or "the user"),
     )

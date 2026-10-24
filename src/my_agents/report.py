@@ -71,6 +71,9 @@ def format_row(row: dict, pricing: dict | None = None) -> str:
     if node == "route":
         model = row.get("model") or "-"
         return f"route        {model:<22} {_secs(row.get('latency_ms')):>6}  → @{row['agent']}  ({row.get('decision')}){err}"
+    if node == "ground":
+        model = row.get("model") or "-"
+        return f"  ground     {model:<22} {_secs(row.get('latency_ms')):>6}  {row.get('decision')}{err}"
     if node == "delegate":
         return f"  delegate   @{row.get('decision')}: {row.get('args')}{err}"
     if node == "return":
