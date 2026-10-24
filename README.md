@@ -20,6 +20,7 @@ The shared goal of every agent: help you become a strong candidate for a researc
 | **@coder** | Writes and edits code in your repos (with your approval) | Claude Sonnet |
 | **@reviewer** | Independent critic of code, experiments and drafts | Codex (ChatGPT) |
 | **@writer** | Paper sections, statements, emails; saves drafts | Claude Sonnet |
+| **@friday** | General assistant for everyday questions: your calendar, free time, quick facts, news, reminders | Claude Haiku |
 
 The Coder and the Reviewer run on **different model families** on purpose, so the review catches different mistakes.
 
@@ -61,6 +62,7 @@ python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"
 | `my-agents eod` | End-of-day report: what each agent did, how, and the cost |
 | `my-agents ui` | **Chat with the agents in the browser** (approve actions there too), plus a live board, step-by-step timelines with exact prompts, team topology, memory and EOD |
 | `my-agents telegram` | The Telegram bot (run `telegram setup` once first) |
+| `my-agents calendar [show\|list\|add NAME\|remove NAME]` | Connect calendars for @friday (read-only iCal feeds) and see your agenda |
 | `my-agents study [init\|due\|jobs\|run JOB]` | Load the MAS curriculum, see topics due for review, run a study job now |
 | `my-agents bench run SUITE` | Benchmark team configurations on a task suite (`mas_core`, `injection`) |
 | `my-agents bench list` / `show ID` | Past benchmark runs and their reports |
@@ -118,6 +120,22 @@ Besides accuracy it reports unsafe stops (wrong when the controller chose to sto
 before the surfaced evidence determined the answer), coverage of private facts at stop, compute amplification
 caused by the adversary, and the information × adversary interaction. The dashboard's **Lab** tab shows every
 trial's discussion and every exact prompt.
+
+## Friday and your calendar
+
+**@friday** is the everyday assistant: "what's on tomorrow?", "when am I free on Thursday afternoon?", "when is my next advisor meeting?", "remind me to submit the form on Friday", plus quick facts, news and general questions that no specialist covers. It runs on Claude Haiku (fast and cheap), and the router sends it everyday questions automatically.
+
+Connect calendars read-only through their private **iCal address** (no API keys, no OAuth):
+
+```bash
+.venv/bin/my-agents calendar add personal   # paste the address into a hidden prompt
+.venv/bin/my-agents calendar add njit       # add as many as you like
+.venv/bin/my-agents calendar                # this week's agenda; `calendar list`, `calendar remove NAME`
+```
+
+Where to find the address: **Google Calendar** → Settings → your calendar → *Integrate calendar* → *Secret address in iCal format*; **iCloud** → share the calendar → *Public Calendar*; **Outlook** → Settings → *Shared calendars* → *Publish*. A local `.ics` file works too. The addresses are secrets, so they are stored owner-only in `~/.config/my-agents/calendars.txt` and never shown to a model, a trace or an error.
+
+Friday's calendar tools: `calendar_events` (a date range, recurring events expanded, optional text filter) and `free_slots` (free gaps in a day's working hours). It also sees your tasks and milestones, adds reminders as tasks, and can't create or change calendar events (it gives you the details to paste instead). The orchestrator has the same calendar tools for planning your week. Event details are sent to the model that runs Friday; set `backend: ollama` in `agents/friday.yaml` to keep them on your machine.
 
 ## Up-to-date information
 

@@ -285,7 +285,7 @@ def test_render_transcript():
 def test_shipped_specs_build_a_graph():
     specs = load_agents()
     assert {"orchestrator", "explainer", "examiner", "task_runner", "experiment_tracker", "phd_tracker",
-            "lit_surveyor", "trend_scout", "career_coach", "coder", "reviewer", "writer"} == set(specs)
+            "lit_surveyor", "trend_scout", "career_coach", "coder", "reviewer", "writer", "friday"} == set(specs)
     graph = build_graph(specs, load_router_config(), NullTracer(), store=Store(":memory:"),
                         adapters={n: FakeAdapter() for n in specs}, router_adapter=FakeAdapter())
     assert {"route", "tools", *specs} <= set(graph.get_graph().nodes)

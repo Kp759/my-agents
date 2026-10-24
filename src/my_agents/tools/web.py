@@ -219,14 +219,14 @@ class _PinnedHTTPS(http.client.HTTPSConnection):
         self.sock = self._context.wrap_socket(sock, server_hostname=self.host)  # certificate checked for host
 
 
-def _download(url: str, timeout: int = 20) -> tuple[str, dict, bytes]:
+def _download(url: str, timeout: int = 20, max_bytes: int = MAX_BYTES, accept: str | None = None) -> tuple[str, dict, bytes]:
     for _ in range(MAX_REDIRECTS + 1):
         host, ip = check_public_url(url)  # every hop: https, public address only
         u = urlparse(url)
         conn = _PinnedHTTPS(host, ip, timeout)
         try:
             conn.request("GET", (u.path or "/") + (f"?{u.query}" if u.query else ""), headers={
-                "User-Agent": USER_AGENT, "Accept": "text/html,text/plain,application/json;q=0.9,*/*;q=0.1",
+                "User-Agent": USER_AGENT, "Accept": accept or "text/html,text/plain,application/json;q=0.9,*/*;q=0.1",
                 "Accept-Encoding": "identity", "Accept-Language": "en"})
             resp = conn.getresponse()
             headers = {k.lower(): v for k, v in resp.getheaders()}
@@ -235,7 +235,7 @@ def _download(url: str, timeout: int = 20) -> tuple[str, dict, bytes]:
                 continue
             if resp.status >= 400:
                 raise HTTPStatusError(resp.status, url.split("?")[0])
-            return url, headers, resp.read(MAX_BYTES)
+            return url, headers, resp.read(max_bytes)
         finally:
             conn.close()
     raise RuntimeError(f"more than {MAX_REDIRECTS} redirects")

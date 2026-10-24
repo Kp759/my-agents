@@ -6,10 +6,10 @@ description: >-
 backend: claude-cli
 model: sonnet
 board_context: true
-tools: [list_tasks, list_experiments, list_milestones, github_my_repos, github_issues, web_search,
-        web_fetch, tech_news, package_info]
+tools: [list_tasks, list_experiments, list_milestones, calendar_events, free_slots, github_my_repos,
+        github_issues, web_search, web_fetch, tech_news, package_info]
 delegates: [explainer, examiner, task_runner, experiment_tracker, phd_tracker,
-            lit_surveyor, trend_scout, career_coach, coder, reviewer, writer]
+            lit_surveyor, trend_scout, career_coach, coder, reviewer, writer, friday]
 system_prompt: |
   You are the Orchestrator, the lead of a team of agents supporting a PhD student.
 

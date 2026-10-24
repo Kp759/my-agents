@@ -312,6 +312,50 @@ def cmd_study(args) -> int:
     return 0
 
 
+def cmd_calendar(args) -> int:
+    import getpass
+
+    from .tools import calendar
+
+    if args.action == "add":
+        if not args.name:
+            print("usage: my-agents calendar add NAME   (e.g. personal, njit)", file=sys.stderr)
+            return 1
+        print("Google: Settings → your calendar → Integrate calendar → Secret address in iCal format.\n"
+              "iCloud: Calendar → share → Public Calendar. Outlook: Settings → Shared calendars → Publish.\n"
+              "Or the path of an .ics file. The address is a secret: it is stored owner-only and never shown.")
+        source = getpass.getpass("Paste the iCal address or file path (input is hidden), then Enter: ").strip()
+        if not source:
+            return 1
+        try:
+            source = calendar.normalise_source(source)
+            events = calendar.parse_ics(calendar._fetch(source), args.name, calendar.local_zone())
+        except Exception as e:
+            print(f"error: couldn't read that calendar ({calendar._safe_error(e, source)})", file=sys.stderr)
+            return 1
+        calendar.save_source(args.name, source)
+        print(f"Connected {args.name!r}: {len(events)} events. Saved to {calendar.sources_path()} (chmod 600).")
+    elif args.action == "remove":
+        ok = calendar.remove_source(args.name or "")
+        print(f"Removed {args.name!r}." if ok else f"No calendar named {args.name!r}.")
+    elif args.action == "list":
+        sources = calendar.load_sources()
+        for name, source in sources.items():
+            print(f"  {name:<16} {'iCal address' if source.startswith('https://') else '.ics file'}")
+        print("  no calendars yet: `my-agents calendar add NAME`" if not sources else "")
+    else:  # show
+        out = calendar.calendar_events(args.name, days=args.days, limit=100)
+        if "note" in out:
+            print(out["note"])
+            return 0
+        print(f"  {out['range']}")
+        for ev in out["events"]:
+            print(f"  {ev['when']:<32} {ev['title']}" + (f"  [{ev['calendar']}]" if len(calendar.load_sources()) > 1 else ""))
+        for p in out.get("problems", []):
+            print(f"  ! {p['calendar']}: {p['error']}")
+    return 0
+
+
 def cmd_bench(args) -> int:
     from . import bench
 
@@ -417,6 +461,12 @@ def main(argv: list[str] | None = None) -> int:
     st.add_argument("action", nargs="?", choices=["due", "init", "jobs", "run"], default="due")
     st.add_argument("name", nargs="?", help="job name for `run`")
     st.set_defaults(fn=cmd_study)
+
+    cal = sub.add_parser("calendar", help="connect calendars (read-only iCal feeds) for @friday")
+    cal.add_argument("action", nargs="?", choices=["show", "list", "add", "remove"], default="show")
+    cal.add_argument("name", nargs="?", help="calendar name for add/remove; first day for show (YYYY-MM-DD, tomorrow…)")
+    cal.add_argument("--days", type=int, default=7, help="days to show")
+    cal.set_defaults(fn=cmd_calendar)
 
     bn = sub.add_parser("bench", help="benchmark team configurations on a task suite")
     bn.add_argument("action", choices=["run", "list", "show"])

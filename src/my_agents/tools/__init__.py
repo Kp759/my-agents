@@ -38,8 +38,8 @@ class Tool:
 
 
 def make_toolbox(store: Store) -> dict[str, Tool]:
-    from . import code, career, github, memory, research, web, writing
+    from . import calendar, code, career, github, memory, research, web, writing
 
     tools = [*memory.tools(store), *research.tools(), *career.tools(), *code.tools(), *writing.tools(),
-             *github.tools(), *web.tools()]
+             *github.tools(), *web.tools(), *calendar.tools()]
     return {t.name: t for t in tools}

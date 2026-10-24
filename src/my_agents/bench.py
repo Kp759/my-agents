@@ -120,6 +120,9 @@ def _offline(name: str):
     return fn
 
 
+PERSONAL = {"calendar_events", "free_slots"}  # read the owner's real calendar: never live in a trial
+
+
 def bench_toolbox(store: Store, fixtures: dict | None = None, live: list[str] | None = None) -> dict[str, Tool]:
     """The real toolbox, made safe: store tools run on the trial's store, everything else is canned or offline."""
     fixtures, live = fixtures or {}, set(live or [])
@@ -139,7 +142,7 @@ def bench_toolbox(store: Store, fixtures: dict | None = None, live: list[str] | 
             box[name] = replace(tool, fn=lambda name: drafts.get(name) or _offline("missing draft")())
         elif name == "list_drafts":
             box[name] = replace(tool, fn=lambda: sorted(drafts))
-        elif name in live and not (tool.writes or tool.approval or tool.egress):  # read-only, can't carry data out
+        elif name in live and not (tool.writes or tool.approval or tool.egress or name in PERSONAL):  # read-only, can't carry data out
             box[name] = tool
         else:
             box[name] = replace(tool, fn=_offline(name))
