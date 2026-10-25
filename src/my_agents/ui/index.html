@@ -645,7 +645,7 @@ function learn() {
   <p>The <b>Chat</b> tab runs exactly the same graph as <code>my-agents chat</code>; its right-hand panel is the same step-by-step trace as the Requests tab, live.</p>
 
   <h3>1. A request comes in: routing</h3>
-  <p>Your message first reaches the <b>router</b>, a small local model (Qwen3 8B through Ollama) that reads one-line descriptions of every agent and answers with a name. It is fast (≈0.4 s) and free. If its answer names no agent, the request goes to the default agent. <code>@agent</code> skips routing. <i>Code: <code>graph.py → route</code>, prompt <code>ROUTER_PROMPT</code>.</i></p>
+  <p>Your message first reaches the <b>router</b>, a small local model (Qwen3 8B through Ollama) that reads one-line descriptions of every agent and answers with a name. It is fast (≈0.4 s) and free. If its answer names no agent, the request goes to the default agent. <code>@agent</code> skips routing. The router also sees the last few turns and who answered them, so a follow-up like "and chapter 2?" stays with the agent you were talking to, while a different kind of request ("find papers on this") still goes to its specialist. Without that context a short follow-up is ambiguous, and the agent with the broadest description wins. <i>Code: <code>graph.py → route</code>, <code>route_input</code>, prompt <code>ROUTER_PROMPT</code>.</i></p>
   <p><b>Why it matters for MAS research:</b> routing is the cheapest place to save cost. A wrong route wastes a whole expensive agent call; a router that is too eager to call the orchestrator multiplies calls.</p>
 
   <h3>2. Agents: a role, a model, tools and memory</h3>

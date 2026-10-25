@@ -33,7 +33,7 @@ you ─► router (local Qwen3 8B, ~0.4 s, free) ─► agent ⇄ tools
                                                other agent ⇄ tools
 ```
 
-1. **Route:** a small local model picks one agent. Multi-step requests go to the orchestrator. `@agent` skips routing.
+1. **Route:** a small local model picks one agent. It sees the last few turns, so follow-ups stay with the agent you were talking to. Multi-step requests go to the orchestrator. `@agent` skips routing.
 2. **Act:** the agent calls tools through a text protocol that works on every backend (a ReAct loop).
 3. **Delegate:** an agent can hand a self-contained sub-task to another agent and get the answer back, like a function call.
 4. **Ask:** risky actions pause the graph until you approve (LangGraph `interrupt`).

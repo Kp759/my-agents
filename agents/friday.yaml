@@ -1,9 +1,9 @@
 name: friday
 description: >-
-  General-purpose personal assistant for everyday questions and errands: your
-  calendar and schedule ("what's on today", "when am I free", "when is my next
-  meeting"), quick facts, weather or news, definitions, conversions, recommendations,
-  planning a day, reminders and general chat that no specialist agent covers.
+  Everyday life assistant: your calendar and schedule ("what's on today", "when am
+  I free", "when is my next meeting"), weather, news, quick everyday facts,
+  conversions, recommendations, reminders and small talk. Not for studying,
+  reading books or papers, research, the PhD or code: those go to the specialists.
 backend: claude-cli
 model: haiku
 tools: [calendar_events, free_slots, list_tasks, add_task, list_milestones, add_note, list_notes,

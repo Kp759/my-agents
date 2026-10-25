@@ -84,7 +84,25 @@ ROUTER_PROMPT = """You route {owner}'s request (a PhD student) to exactly one ag
 Agents:
 {agents}
 
+A follow-up that continues the same kind of work ("next chapter", "and chapter 2?", "why?", "shorter
+please", "what about X?") goes to the agent that answered the previous message. A message that asks
+for a different kind of work (find papers, quiz me, my calendar, write code, track a deadline) goes
+to the agent for that work, even mid-conversation.
+
 Reply with only the agent's name, nothing else."""
+
+ROUTE_TURNS = 4  # earlier messages the router sees, so follow-ups stay with the same agent
+
+
+def route_input(messages: list[Message]) -> Message:
+    """The latest message, preceded by the last few turns and who answered them."""
+    *earlier, last = messages
+    if not earlier:
+        return last
+    lines = [f"{'@' + m['agent'] if m.get('agent') else m['role']}: {' '.join(m['content'].split())[:200]}"
+             for m in earlier[-ROUTE_TURNS:]]
+    return {"role": "user", "content": "Recent conversation:\n" + "\n".join(lines)
+            + f"\n\nRoute this new message: {last['content']}"}
 
 
 GROUND_PROMPT = """Decide whether answering the latest message needs a web search first.
@@ -237,8 +255,9 @@ def build_graph(
         elif len(names) == 1:
             chosen, how = names[0], "only agent"
         else:
+            seen = route_input(state["messages"])
             try:
-                completion = router_adapter.complete(router_system, [last])
+                completion = router_adapter.complete(router_system, [seen])
             except AdapterError as e:
                 tracer.record(**ids, node="route", agent=router.default_agent, backend=router_adapter.name,
                               model=router_adapter.model, prompt_chars=len(last["content"]), error=str(e),
@@ -248,7 +267,7 @@ def build_graph(
             tracer.record(**ids, node="route", agent=chosen, backend=router_adapter.name,
                           model=router_adapter.model, prompt_chars=len(last["content"]), completion=completion,
                           input_preview=preview(last["content"]), decision=f"router chose {chosen}",
-                          io={"system": router_system, "messages": [last], "output": completion.text})
+                          io={"system": router_system, "messages": [seen], "output": completion.text})
             return {**fresh, "agent": chosen}
         tracer.record(**ids, node="route", agent=chosen, backend="none", model=None,
                       input_preview=preview(last["content"]), decision=how, latency_ms=0)

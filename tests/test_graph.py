@@ -468,3 +468,16 @@ def test_parse_ground():
 def test_grounding_is_read_from_config_and_off_by_default():
     assert RouterConfig("fake", None, "x").grounding == "off"
     assert load_router_config().grounding in ("auto", "off")
+
+
+def test_router_sees_recent_turns_so_follow_ups_stay_with_the_agent():
+    from my_agents.graph import route_input
+
+    seen = []
+    graph, _, _, _ = make({}, router_reply=lambda system, msgs: seen.append(msgs[0]["content"]) or "explainer")
+    ask(graph, "give me cliff notes on chapter 1")
+    ask(graph, "and chapter 2?")
+    assert seen[0] == "give me cliff notes on chapter 1"  # first message: nothing to add
+    assert "@explainer: reply from explainer" in seen[1] and seen[1].endswith("Route this new message: and chapter 2?")
+    long = [{"role": "user", "content": f"m{i}"} for i in range(10)]
+    assert "m4" not in route_input(long)["content"] and "user: m5" in route_input(long)["content"]  # last 4 before m9
