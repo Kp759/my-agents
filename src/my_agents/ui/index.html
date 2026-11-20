@@ -7,11 +7,11 @@
 <style>
 :root {
   --bg: #f7f7f5; --panel: #ffffff; --ink: #1d1d1b; --muted: #6b6b66; --line: #e3e2dd;
-  --accent: #b4532a; --ok: #2f7d4f; --err: #b3261e; --code: #f1f0ec; --chip: #efeee9;
+  --accent: #6253bd; --ok: #2f7d4f; --err: #b3261e; --code: #f1f0ec; --chip: #efeee9;
 }
 @media (prefers-color-scheme: dark) {
   :root { --bg: #161615; --panel: #1f1f1d; --ink: #ecebe6; --muted: #9a9a93; --line: #33332f;
-          --accent: #e0835a; --ok: #6cc28f; --err: #f08a80; --code: #262624; --chip: #2b2b28; }
+          --accent: #b4a8ff; --ok: #6cc28f; --err: #f08a80; --code: #262624; --chip: #2b2b28; }
 }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--ink);
@@ -79,32 +79,103 @@ button.del:hover { color: var(--err); }
 .learn p { margin: 4px 0 8px; max-width: 75ch; }
 svg text { fill: var(--ink); font: 12px -apple-system, sans-serif; }
 .empty { color: var(--muted); padding: 20px 0; text-align: center; }
-.chatgrid { display: grid; grid-template-columns: 200px minmax(0, 1fr) minmax(0, 420px); gap: 16px;
-            height: calc(100vh - 100px); }
-.chatgrid .panel { overflow: auto; }
-@media (max-width: 1100px) { .chatgrid { grid-template-columns: 1fr; height: auto; } .chatgrid .panel { max-height: none; } }
-.conv { display: flex; flex-direction: column; padding: 0; }
-.msgs { flex: 1; overflow: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px; min-height: 300px; }
-.bubble { max-width: 85%; padding: 10px 14px; border-radius: 12px; word-break: break-word; }
-.bubble.user { align-self: flex-end; background: var(--accent); color: #fff; border-bottom-right-radius: 4px;
-               white-space: pre-wrap; }
-.bubble.agent { align-self: flex-start; background: var(--bg); border: 1px solid var(--line);
-                border-left: 4px solid var(--lane); border-bottom-left-radius: 4px; }
-.bubble.agent p:first-child { margin-top: 4px; } .bubble.agent p:last-child { margin-bottom: 0; }
-.composer { border-top: 1px solid var(--line); padding: 12px; display: flex; gap: 8px; align-items: flex-end;
-            flex-wrap: wrap; }
-.composer textarea { flex: 1; min-width: 200px; min-height: 44px; max-height: 200px; resize: vertical; font: inherit;
-                     padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel);
-                     color: var(--ink); }
-.composer select { font: inherit; padding: 8px; border: 1px solid var(--line); border-radius: 8px;
-                   background: var(--panel); color: var(--ink); }
+/* The chat fills the space below the application navigation. */
+body:has(.chatgrid) { height: 100vh; height: 100dvh; display: flex; flex-direction: column; }
+body:has(.chatgrid) main { flex: 1; min-height: 0; }
+#view:has(.chatgrid) { padding: 0; margin: 0; max-width: none; }
+header { padding: 10px 22px; flex: none; }
+header h1 { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+header h1::before, .chat-mark { content: ''; display: inline-block; width: 27px; height: 27px;
+  border-radius: 9px 9px 9px 3px; background: repeating-linear-gradient(125deg, transparent 0 5px,
+  #ffffff48 5px 7px), #6253bd; }
+nav { align-items: center; }
+nav details { position: relative; }
+nav summary { padding: 6px 10px; color: var(--muted); font: inherit; margin: 0; }
+.nav-menu { position: absolute; top: 110%; z-index: 6; min-width: 155px; padding: 6px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 6px 24px #0002; }
+.nav-menu button { display: block; width: 100%; text-align: left; }
+.chatgrid { --tint: color-mix(in srgb, var(--accent) 8%, var(--panel));
+  display: grid; grid-template-columns: minmax(180px, 16.5%) minmax(0, 1fr) minmax(235px, 22%);
+  height: 100%; min-height: 0; background: var(--panel); }
+.chat-side, .work-side { background: var(--bg); overflow-y: auto; min-width: 0; padding: 24px 16px; }
+.chat-side { border-right: 1px solid var(--line); }
+.work-side { border-left: 1px solid var(--line); padding: 24px 20px; }
+.chatgrid h2, .chatgrid h3 { line-height: 1.3; margin: 0; }
+.chatgrid h2 { font-size: 16px; letter-spacing: -.02em; }
+.chatgrid h3 { font-size: 12px; color: var(--muted); margin: 24px 0 10px; }
+.new-chat { width: 100%; margin: 16px 0 12px; }
+.thread-link { width: 100%; text-align: left; font: inherit; background: transparent; color: var(--ink);
+  cursor: pointer; border: 0; border-radius: 8px; padding: 9px 10px; margin: 2px 0; }
+.thread-link span, .thread-link small { display: block; }
+.thread-link span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.thread-link small { color: var(--muted); font-size: 11px; margin-top: 3px; }
+.thread-link:hover, .thread-link[aria-current=true] { background: var(--tint); }
+.thread-link[aria-current=true] { box-shadow: inset 3px 0 var(--accent); }
+.conv { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.conv-top { min-height: 62px; padding: 12px clamp(14px, 2.2vw, 36px); border-bottom: 1px solid var(--line);
+  display: flex; align-items: center; gap: 10px; justify-content: space-between; }
+.conv-top h2 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.compact-control { display: none; }
+.msgs { flex: 1; overflow-y: auto; min-height: 0; padding: 20px clamp(14px, 3vw, 48px);
+  overscroll-behavior: contain; }
+.transcript { max-width: 750px; margin: auto; display: flex; flex-direction: column; gap: 22px; }
+.bubble { overflow-wrap: anywhere; max-width: 95%; }
+.bubble.user { align-self: flex-end; max-width: 82%; padding: 10px 16px; border-radius: 18px 18px 4px 18px;
+  background: var(--tint); white-space: pre-wrap; }
+.bubble.assistant { align-self: flex-start; line-height: 1.65; }
+.author { font-size: 12px; font-weight: 650; margin: 0 0 4px; display: flex; align-items: center; gap: 7px; }
+.author::before { content: ''; width: 9px; height: 9px; border-radius: 3px; background: var(--lane); }
+.bubble p { margin: .35em 0; }
+.welcome { align-content: center; max-width: 540px; min-height: 100%; padding: 24px 0; margin: auto; }
+.welcome .chat-mark { width: 44px; height: 44px; border-radius: 15px 15px 15px 4px; }
+.welcome h2 { font-size: clamp(29px, 3.2vw, 46px); font-weight: 560; letter-spacing: -.055em; margin: 14px 0 20px; }
+.starters { display: flex; gap: 8px; flex-wrap: wrap; }
+.starters button { text-align: left; }
+.compose-wrap { padding: 10px clamp(12px, 2.8vw, 40px) 18px; }
+.composer { max-width: 800px; margin: auto; padding: 12px; border: 1px solid var(--line); border-radius: 16px;
+  box-shadow: 0 3px 15px #1111; }
+.composer:focus-within { border-color: var(--accent); }
+.composer textarea { display: block; width: 100%; min-height: 54px; max-height: 160px; resize: vertical;
+  border: none; color: var(--ink); background: transparent; padding: 4px; font: inherit; }
+.composer textarea:focus { outline: none; }
+.compose-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.composer select { max-width: 70%; font: inherit; font-size: 12px; padding: 5px; color: var(--ink);
+  background: var(--bg); border: 1px solid var(--line); border-radius: 7px; }
+.work-card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 11px; margin: 10px 0; }
+.work-card p, .event p { margin: 4px 0; overflow-wrap: anywhere; }
+.work-state { color: var(--accent); font-size: 12px; font-weight: 600; }
+.event { padding: 9px 0 9px 12px; border-left: 2px solid var(--line); font-size: 13px; }
+.event time { font-size: 11px; color: var(--muted); }
+.team-picker { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
+.chatgrid details summary { font: inherit; font-size: 13px; }
+.work-side details { margin-top: 18px; }
+@media (max-width: 1000px) {
+  .chatgrid { grid-template-columns: minmax(0, 1fr) 255px; position: relative; }
+  .chat-side { display: none; }
+  #history-toggle { display: inline-block; }
+  .chatgrid.show-history .chat-side { display: block; position: absolute; inset: 60px auto 0 0;
+    width: min(290px, 93%); z-index: 3; box-shadow: 8px 6px 24px #0002; }
+  .conv-top { justify-content: start; }
+}
+@media (max-width: 680px) {
+  header { padding: 7px 10px; gap: 4px 10px; }
+  header h1 { font-size: 14px; }
+  nav button, nav summary { font-size: 12px; padding: 5px; }
+  .nav-menu { right: 0; }
+  .chatgrid { grid-template-columns: minmax(0, 1fr); }
+  .work-side { display: none; }
+  #activity-toggle { display: inline-block; margin-left: auto; }
+  .chatgrid.show-activity .work-side { display: block; position: absolute; inset: 60px 0 0 auto;
+    width: min(330px, 96%); z-index: 3; box-shadow: -8px 6px 24px #0002; }
+  .compose-wrap { padding-bottom: max(10px, env(safe-area-inset-bottom)); }
+}
 .approval { border: 2px solid var(--accent); border-radius: 10px; padding: 12px; background: var(--panel); }
 .approval pre { max-height: 240px; }
 .working { color: var(--muted); font-size: 13px; display: flex; align-items: center; gap: 8px; }
 .spinner { width: 12px; height: 12px; border: 2px solid var(--line); border-top-color: var(--accent);
            border-radius: 50%; animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
-button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+button.primary { background: #6151b7; color: #fff; border-color: var(--accent); }
 button:disabled { opacity: .5; cursor: not-allowed; }
 </style>
 </head>
@@ -112,7 +183,7 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 <header>
   <h1 id="brand">My <span>Agents</span></h1>
   <nav id="tabs"></nav>
-  <span class="small muted" style="margin-left:auto"><span class="live-dot"></span>live · refreshes every 2 s</span>
+
 </header>
 <main id="view"></main>
 
@@ -123,7 +194,7 @@ const TABS = [
 ];
 let tab = location.hash.slice(1) || "chat";
 let selectedRun = null;
-let timer = null;
+let timer = null, viewEpoch = 0;
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -140,16 +211,29 @@ const time = (ts) => new Date(ts).toLocaleTimeString([], {hour: "2-digit", minut
 const agentChip = (a) => `<span class="chip agent" style="color:${lane(a)}">@${esc(a)}</span>`;
 
 function renderTabs() {
-  $("#tabs").innerHTML = TABS.map(([id, label]) =>
-    `<button class="${id === tab ? "on" : ""}" onclick="go('${id}')">${label}</button>`).join("");
+  const link = ([id, label]) => `<button class="${id === tab ? "on" : ""}" onclick="go('${id}')">${label}</button>`;
+  const extra = TABS.slice(4);
+  $("#tabs").innerHTML = TABS.slice(0, 4).map(link).join("") + `<details><summary>${extra.find(t => t[0] === tab)?.[1] || "More"}</summary><div class="nav-menu">${extra.map(link).join("")}</div></details>`;
 }
 function go(id) { tab = id; location.hash = id; renderTabs(); show(); }
 
 async function show() {
   clearInterval(timer);
   const views = {chat, live, requests, agents, memory, study, bench, lab, eod, learn};
-  await views[tab]();
-  if (["chat", "live", "requests"].includes(tab)) timer = setInterval(() => views[tab](true), tab === "chat" ? 1200 : 2000);
+  const current = tab, epoch = ++viewEpoch;
+  async function refresh(poll) {
+    try { await views[current](poll); }
+    catch (e) {
+      if (epoch === viewEpoch && current === "chat") {
+        if ($("#chat-error")) showChatConnectionError();
+        else $("#view").textContent = "Connecting to your chat…";
+      }
+    } finally {
+      if (epoch === viewEpoch && ["chat", "live", "requests"].includes(current))
+        timer = setTimeout(() => refresh(true), current === "chat" ? 1200 : 2000);
+    }
+  }
+  await refresh(false);
 }
 
 // ---------- request timeline ----------
@@ -246,56 +330,137 @@ function keepOpen(container, html) {
 }
 
 // ---------- chat ----------
-let chatThread = null, chatAgents = null, chatKey = "";
-try { chatThread = localStorage.getItem("chatThread"); } catch (e) {}
+let chatThread = null, chatVersion = 0, chatAgents = [], emptyThread = null;
+const drafts = new Map(), pending = new Set();
+try { chatThread = localStorage.getItem("chatThread"); } catch {}
+const agentName = name => String(name || "Agent").replaceAll("_", " ").replace(/\b\w/g, c => c.toUpperCase());
+const starters = ["Plan my study session", "Prepare for my advisor meeting", "Review my open tasks"];
 
-async function chat(refresh) {
-  if (!chatAgents) chatAgents = (await api("/api/agents")).agents.map((a) => a.name);
-  if (!chatThread) await newChat(false);
-  const [threads, st] = await Promise.all([api("/api/chat/threads"), api(`/api/chat/state?thread=${chatThread}`)]);
-  if (!refresh || !$("#msgs")) {
-    $("#view").innerHTML = `<div class="chatgrid">
-      <div class="panel"><button class="btn primary" style="width:100%" onclick="newChat(true)">+ New chat</button>
-        <div id="threads" class="list" style="margin-top:10px"></div></div>
-      <div class="panel conv"><div id="msgs" class="msgs"></div>
-        <div class="composer">
-          <select id="pick" title="Who should answer">
-            <option value="">Auto (router decides)</option>
-            ${chatAgents.map((a) => `<option value="${esc(a)}">@${esc(a)}</option>`).join("")}</select>
-          <textarea id="box" placeholder="Message your agents…  (Enter to send, Shift+Enter for a new line)"></textarea>
-          <button id="send" class="btn primary" onclick="sendChat()">Send</button></div></div>
-      <div class="panel"><h2>What's happening</h2><div id="steps"></div></div></div>`;
-    $("#box").addEventListener("keydown", (e) => {
-      if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendChat(); }
-    });
+function setThread(id) {
+  chatThread = id;
+  try { localStorage.setItem("chatThread", id); } catch {}
+}
+function mountChat(id) {
+  $("#view").innerHTML = `<div class="chatgrid">
+    <aside class="chat-side" id="history-pane"><h2>Conversations</h2>
+      <button class="btn primary new-chat" id="new-chat">＋ New chat</button><div id="threads"></div></aside>
+    <section class="conv" aria-label="Conversation">
+      <div class="conv-top"><button class="btn compact-control" id="history-toggle" aria-controls="history-pane" aria-expanded="false">Chats</button>
+        <h2 id="chat-title">New conversation</h2>
+        <button class="btn compact-control" id="activity-toggle" aria-controls="work-pane" aria-expanded="false">Activity</button></div>
+      <div id="msgs" class="msgs" role="log" aria-label="Messages" aria-live="polite"></div>
+      <div class="compose-wrap"><div id="chat-error" role="status" class="small err"></div>
+        <form class="composer" id="composer"><textarea id="box" aria-label="Message your agents" maxlength="20000" placeholder="Message your agents…"></textarea>
+        <div class="compose-actions"><select id="pick" aria-label="Choose responding agent"><option value="">Auto-select agent</option>
+          ${chatAgents.map(a => `<option value="${esc(a)}">@${esc(a)}</option>`).join("")}</select>
+          <button id="send" type="submit" class="btn primary">Send ↑</button></div></form></div></section>
+    <aside class="work-side" id="work-pane" aria-label="Agent activity"><h2>Agent activity</h2>
+      <h3>Working across chats</h3><div id="work"></div>
+      <h3>This conversation</h3><div id="events"></div>
+      <button type="button" id="open-trace" class="btn" hidden>View full trace ↗</button>
+      <details><summary>Message a specialist (${chatAgents.length})</summary><div class="team-picker">
+        ${chatAgents.map(a => `<button class="btn small" data-pick="${esc(a)}">${esc(agentName(a))}</button>`).join("")}
+      </div></details></aside></div>`;
+  $(".chatgrid").dataset.thread = id;
+  $("#box").value = drafts.get(id)?.text || "";
+  $("#pick").value = drafts.get(id)?.agent || "";
+  const save = () => drafts.set(id, {text: $("#box").value, agent: $("#pick").value});
+  $("#box").oninput = save;
+  $("#pick").onchange = save;
+  $("#new-chat").onclick = newChat;
+  $("#composer").onsubmit = e => { e.preventDefault(); sendChat(); };
+  $("#box").onkeydown = e => {
+    if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); sendChat(); }
+  };
+  for (const [toggle, name] of [["#history-toggle","history"], ["#activity-toggle","activity"]]) {
+    $(toggle).onclick = () => {
+      const open = !$(".chatgrid").classList.contains("show-" + name);
+      for (const panel of ["history", "activity"]) {
+        $(".chatgrid").classList.toggle("show-" + panel, open && panel === name);
+        $("#" + panel + "-toggle").setAttribute("aria-expanded", String(open && panel === name));
+      }
+    };
   }
-  const key = JSON.stringify([chatThread, st.state, st.messages.length, st.request_id, threads.length]);
-  const busy = st.state === "running" || st.state === "approval";
-  $("#send").disabled = busy;
-  $("#threads").innerHTML = threads.map((t) => `
-    <div class="item ${t.id === chatThread ? "on" : ""}" onclick="openChat('${esc(t.id)}')">
-      <div class="small">${esc(t.title || "(new chat)")}</div>
-      <div class="small muted">${new Date(t.updated).toLocaleString([], {month: "short", day: "numeric", hour: "2-digit", minute: "2-digit"})}
-      ${t.state !== "idle" ? ` · ${esc(t.state)}` : ""}</div></div>`).join("") || `<div class="small muted">No chats yet.</div>`;
-  if (key !== chatKey) {
-    chatKey = key;
-    const msgs = st.messages.map((m) => m.role === "user"
-      ? `<div class="bubble user">${esc(m.content)}</div>`
-      : `<div class="bubble agent" style="--lane:${lane(m.agent || "agent")}">${m.agent ? agentChip(m.agent) : ""}${md(m.content)}</div>`);
-    if (st.state === "running") msgs.push(`<div class="working"><span class="spinner"></span>agents are working… follow along on the right</div>`);
-    if (st.state === "approval") msgs.push(approvalCard(st.approval));
-    if (st.state === "error") msgs.push(`<div class="err small">Error: ${esc(st.error)}</div>`);
-    if (!st.messages.length && st.state === "idle") msgs.push(`<div class="empty">Ask anything. The router picks an agent, or choose one below.<br>
-      Try: “quiz me on attention”, “log an experiment…”, “plan my week”.</div>`);
-    const box = $("#msgs");
-    box.innerHTML = msgs.join("");
-    box.scrollTop = box.scrollHeight;
-  }
-  if (st.request_id) keepOpen($("#steps"), await runDetail(st.request_id));
-  else $("#steps").innerHTML = `<div class="empty small">Each step of your next message (routing, tool calls,
-    delegations, cost) appears here as it happens.</div>`;
+  $(".chatgrid").onclick = e => {
+    const el = e.target.closest("button");
+    if (!el) return;
+    if (el.dataset.thread) return openChat(el.dataset.thread);
+    if (el.dataset.prompt) $("#box").value = el.dataset.prompt;
+    else if (el.dataset.pick) {
+      $("#pick").value = el.dataset.pick;
+      if ($(".chatgrid").classList.contains("show-activity")) $("#activity-toggle").click();
+    } else return;
+    save(); $("#box").focus();
+  };
 }
 
+function updateHTML(node, html) {
+  if (node.rendered !== html) { node.innerHTML = html; node.rendered = html; }
+}
+
+function renderActivity(threads, st) {
+  const active = threads.filter(t => ["running", "approval"].includes(t.state));
+  const cards = active.flatMap(t => {
+    if (!t.work?.length) return [`<div class="work-card"><b>Choosing an agent</b><p>${esc(t.title)}</p></div>`];
+    return t.work.map((w, i) => {
+      const child = t.work[i + 1];
+      const status = child ? "Waiting for " + agentName(child.agent)
+        : t.state === "approval" ? "Needs your approval" : w.tool ? "Using " + w.tool : "Working";
+      return `<div class="work-card"><div class="author" style="--lane:${lane(w.agent)}">${esc(agentName(w.agent))}</div>
+        <span class="work-state">${esc(status)}</span><p>${esc(w.task)}</p>
+        ${t.id !== chatThread ? `<button class="btn small" data-thread="${esc(t.id)}">Open chat ↗</button>` : ""}</div>`;
+    });
+  });
+  updateHTML($("#work"), cards.join("") || '<div class="work-card muted">No agents working right now.</div>');
+  const verbs = {start:"Started", delegate:"Handed off", action:"Ran an action", done:"Finished", error:"Error", note:"Update"};
+  updateHTML($("#events"), st.activity.map(e => `<div class="event"><b>${esc(agentName(e.agent))}</b>
+    <span class="muted">${esc(verbs[e.kind] || e.kind)}</span><p>${esc(e.content)}</p><time>${time(e.created)}</time></div>`).join("") ||
+    '<p class="small muted">Agent handoffs and updates will appear here.</p>');
+  const trace = $("#open-trace");
+  trace.hidden = !st.request_id;
+  trace.onclick = () => { selectedRun = st.request_id; go("requests"); };
+}
+
+async function chat() {
+  const version = ++chatVersion;
+  if (!chatAgents.length) chatAgents = (await agentCatalog()).agents.map(a => a.name);
+  if (!chatThread) {
+    emptyThread ??= api("/api/chat/new").finally(() => { emptyThread = null; });
+    const r = await emptyThread;
+    if (!r.thread_id) throw Error("Could not create a conversation");
+    if (!chatThread) setThread(r.thread_id);
+  }
+  const id = chatThread;
+  const [threads, st] = await Promise.all([api("/api/chat/threads"), api("/api/chat/state?thread=" + encodeURIComponent(id))]);
+  if (tab !== "chat" || version !== chatVersion || chatThread !== id) return;
+  if (!Array.isArray(threads) || !Array.isArray(st.messages)) throw Error("Could not load chat");
+  const fresh = $(".chatgrid")?.dataset.thread !== id;
+  if (fresh) mountChat(id);
+  const error = $("#chat-error");
+  if (error.dataset.connection) { error.textContent = ""; delete error.dataset.connection; }
+  const title = threads.find(t => t.id === id)?.title || "New conversation";
+  $("#chat-title").textContent = title;
+  updateHTML($("#threads"), threads.map(t => `<button class="thread-link" data-thread="${esc(t.id)}" aria-current="${t.id === id}">
+    <span>${esc(t.title || "New conversation")}</span><small>${esc(new Date(t.updated).toLocaleDateString(undefined, {month:"short",day:"numeric"}))}
+    ${t.state === "idle" ? "" : " · " + esc(t.state)}</small></button>`).join("") || '<p class="small muted">No conversations yet.</p>');
+  const busy = ["running", "approval"].includes(st.state);
+  $("#send").disabled = busy || pending.has(id);
+  renderActivity(threads, st);
+  const msgs = st.messages.map(m => m.role === "user" ? `<div class="bubble user">${esc(m.content)}</div>`
+    : `<div class="bubble assistant"><div class="author" style="--lane:${lane(m.agent)}">${esc(agentName(m.agent))}</div>${md(m.content)}</div>`);
+  if (st.state === "running") {
+    const current = st.work?.at(-1);
+    msgs.push(`<div class="working"><span class="spinner"></span>${current ? esc(agentName(current.agent)) + " is working…" : "Choosing an agent…"}</div>`);
+  }
+  if (st.state === "approval") msgs.push(approvalCard(st.approval));
+  if (st.state === "error") msgs.push(`<div class="err" role="alert">${esc(st.error)}</div>`);
+  const html = msgs.length ? `<div class="transcript">${msgs.join("")}</div>` :
+    `<div class="welcome"><span class="chat-mark" aria-hidden="true"></span><h2>Start a conversation</h2>
+      <div class="starters">${starters.map(s => `<button class="btn" data-prompt="${esc(s)}">${esc(s)} ↗</button>`).join("")}</div></div>`;
+  const log = $("#msgs");
+  const nearEnd = log.scrollHeight - log.scrollTop - log.clientHeight < 80;
+  if (log.rendered !== html) { updateHTML(log, html); if (fresh || nearEnd) log.scrollTop = log.scrollHeight; }
+}
 function approvalCard(a) {
   const args = Object.entries(a.args || {}).map(([k, v]) =>
     `<div class="msg"><b>${esc(k)}</b><pre>${esc(typeof v === "string" ? v : JSON.stringify(v, null, 2))}</pre></div>`).join("");
@@ -310,38 +475,50 @@ function approvalCard(a) {
     </div></div>`;
 }
 
-async function sendChat() {
-  const text = $("#box").value.trim();
-  if (!text || $("#send").disabled) return;
+async function chatAction(path, data) {
+  const id = chatThread;
+  if (pending.has(id)) return;
+  pending.add(id);
   $("#send").disabled = true;
-  const r = await post("/api/chat/send", {thread_id: chatThread, text, agent: $("#pick").value || null});
-  if (r.error) { alertBox(r.error); $("#send").disabled = false; return; }
-  $("#box").value = "";
-  chatKey = "";
-  chat(true);
+  $("#chat-error").textContent = "";
+  try {
+    const result = await post(path, {thread_id: id, ...data});
+    if (result.error) throw Error(result.error);
+    if ("text" in data) {
+      const draft = drafts.get(id);
+      if (draft?.text.trim() === data.text) draft.text = "";
+      if ($(".chatgrid")?.dataset.thread === id && $("#box").value.trim() === data.text) $("#box").value = "";
+    }
+  } catch (e) {
+    if ($(".chatgrid")?.dataset.thread === id) $("#chat-error").textContent = e.message;
+  } finally {
+    pending.delete(id);
+    if (tab === "chat" && chatThread === id) refreshChat();
+  }
 }
-async function decide(decision) {
-  const r = await post("/api/chat/decide", {thread_id: chatThread, decision});
-  if (r.error) alertBox(r.error);
-  chatKey = "";
-  chat(true);
+
+function refreshChat() { chat().catch(() => showChatConnectionError()); }
+function showChatConnectionError() {
+  const el = $("#chat-error");
+  if (el) { el.dataset.connection = "1"; el.textContent = "Connection interrupted. Reconnecting…"; }
 }
-async function newChat(render) {
-  chatThread = (await api("/api/chat/new")).thread_id;
-  try { localStorage.setItem("chatThread", chatThread); } catch (e) {}
-  chatKey = "";
-  if (render) chat(true);
+function sendChat() {
+  const text = $("#box").value.trim();
+  if (text && !$("#send").disabled) chatAction("/api/chat/send", {text, agent: $("#pick").value || null});
+}
+function decide(decision) { chatAction("/api/chat/decide", {decision}); }
+async function newChat() {
+  try {
+    const r = await api("/api/chat/new");
+    if (!r.thread_id) throw Error("Could not start a new chat");
+    if (tab === "chat") openChat(r.thread_id);
+  } catch { showChatConnectionError(); }
 }
 function openChat(id) {
-  chatThread = id;
-  try { localStorage.setItem("chatThread", id); } catch (e) {}
-  chatKey = "";
-  chat(true);
-}
-function alertBox(text) {
-  const box = $("#msgs");
-  box.insertAdjacentHTML("beforeend", `<div class="err small">${esc(text)}</div>`);
-  box.scrollTop = box.scrollHeight;
+  setThread(id);
+  mountChat(id);
+  $("#send").disabled = true;
+  refreshChat();
 }
 
 // ---------- tabs ----------
@@ -642,7 +819,7 @@ function learn() {
   $("#view").innerHTML = `<div class="panel learn"><h2>How this multi-agent system works</h2>
   <p class="muted">Every concept below is visible in the other tabs, and each points to the code that implements it. Nothing is hidden: open any step in <b>Requests</b> to see the exact prompt the model received and its raw reply.</p>
 
-  <p>The <b>Chat</b> tab runs exactly the same graph as <code>my-agents chat</code>; its right-hand panel is the same step-by-step trace as the Requests tab, live.</p>
+  <p>The <b>Chat</b> tab runs exactly the same graph as <code>my-agents chat</code>; its activity panel shows current assignments across dashboard chats, waiting agents, and updates from the selected conversation. View full trace opens the detailed request timeline.</p>
 
   <h3>1. A request comes in: routing</h3>
   <p>Your message first reaches the <b>router</b>, a small local model (Qwen3 8B through Ollama) that reads one-line descriptions of every agent and answers with a name. It is fast (≈0.4 s) and free. If its answer names no agent, the request goes to the default agent. <code>@agent</code> skips routing. The router also sees the last few turns and who answered them, so a follow-up like "and chapter 2?" stays with the agent you were talking to, while a different kind of request ("find papers on this") still goes to its specialist. Without that context a short follow-up is ambiguous, and the agent with the broadest description wins. <i>Code: <code>graph.py → route</code>, <code>route_input</code>, prompt <code>ROUTER_PROMPT</code>.</i></p>
@@ -694,11 +871,18 @@ function learn() {
 }
 
 // Brand the page with the owner's name from config.yaml.
-api("/api/agents").then((d) => {
+let catalogRequest;
+function agentCatalog() {
+  return catalogRequest ??= api("/api/agents").then(d => {
+    if (!Array.isArray(d.agents)) throw Error("Could not load agents");
+    return d;
+  }).catch(e => { catalogRequest = null; throw e; });
+}
+agentCatalog().then((d) => {
   if (!d.owner || d.owner === "the user") return;
   $("#brand").innerHTML = `${esc(d.owner)}'s <span>Agents</span>`;
   document.title = `${d.owner}'s Agents`;
-});
+}).catch(() => {});
 
 window.addEventListener("hashchange", () => { const t = location.hash.slice(1); if (t && t !== tab) go(t); });
 renderTabs();

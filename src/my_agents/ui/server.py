@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import re
+import threading
 from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -45,12 +46,14 @@ class API:
         self.board = Board(self.store)
         self.memory = AgentMemory(self.store)
         self._chat = None
+        self._chat_lock = threading.Lock()
 
     @property
     def chat(self) -> ChatManager:
-        if self._chat is None:  # built on first use: loads agents and the checkpointer
-            self._chat = ChatManager(self.store, self.tracer)
-        return self._chat
+        with self._chat_lock:
+            if self._chat is None:  # the browser loads threads and conversation state concurrently
+                self._chat = ChatManager(self.store, self.tracer)
+            return self._chat
 
     def _config(self) -> dict:
         return yaml.safe_load(DEFAULT_CONFIG.read_text()) or {}
@@ -96,6 +99,7 @@ class API:
         router = load_router_config()
         specs = load_agents()
         today = self.tracer.load()
+        pricing = self._pricing()
         stats = defaultdict(lambda: {"calls": 0, "tool_calls": 0, "cost_usd": 0.0, "tokens": 0})
         for r in today:
             s = stats[r.get("agent")]
@@ -103,7 +107,7 @@ class API:
                 s["tool_calls"] += 1
             elif r["node"] not in ("route", "delegate", "return"):
                 s["calls"] += 1
-                s["cost_usd"] += row_cost(r, self._pricing()) or 0
+                s["cost_usd"] += row_cost(r, pricing) or 0
                 s["tokens"] += (r.get("input_tokens") or 0) + (r.get("output_tokens") or 0)
         mem_counts = defaultdict(int)
         for m in self.memory.list(limit=10_000):

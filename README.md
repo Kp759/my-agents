@@ -69,7 +69,7 @@ python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"
 | `my-agents trace [ID]` | Replay a past request step by step |
 | `my-agents board -f` | Live feed of what every agent is working on |
 | `my-agents eod` | End-of-day report: what each agent did, how, and the cost |
-| `my-agents ui` | **Chat with the agents in the browser** (approve actions there too), plus a live board, step-by-step timelines with exact prompts, team topology, memory and EOD |
+| `my-agents ui` | Chat with the team, approve actions, and see each active agent's assignment across dashboard chats. Open **Activity** on a phone or **View full trace** for the latest request's tool calls. |
 | `my-agents telegram` | The Telegram bot (run `telegram setup` once first) |
 | `my-agents calendar [show\|list\|add NAME\|remove NAME]` | Connect calendars for @friday (read-only iCal feeds) and see your agenda |
 | `my-agents study [init\|due\|jobs\|run JOB]` | Load the MAS curriculum, see topics due for review, run a study job now |

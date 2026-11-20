@@ -49,6 +49,7 @@ CREATE TABLE IF NOT EXISTS board (
     id INTEGER PRIMARY KEY, agent TEXT NOT NULL, kind TEXT DEFAULT 'note', content TEXT NOT NULL,
     thread_id TEXT, created TEXT
 );
+CREATE INDEX IF NOT EXISTS board_thread_id_idx ON board(thread_id, id);
 CREATE TABLE IF NOT EXISTS agent_memory (
     id INTEGER PRIMARY KEY, agent TEXT NOT NULL, kind TEXT DEFAULT 'fact', content TEXT NOT NULL,
     created TEXT

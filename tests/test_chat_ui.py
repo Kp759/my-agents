@@ -56,6 +56,7 @@ def test_approval_pauses_and_resumes_from_the_page():
     m.send("t1", "delete task 1", None)
     st = wait(m, "t1")
     assert st["state"] == "approval" and st["approval"]["tool"] == "delete_task"
+    assert st["work"] == [{"agent": "task_runner", "task": "delete task 1", "tool": "delete_task"}]
     with pytest.raises(ValueError):
         m.send("t1", "another message", None)  # busy while waiting
     with pytest.raises(ValueError):
@@ -63,6 +64,29 @@ def test_approval_pauses_and_resumes_from_the_page():
     m.decide("t1", "yes")
     st = wait(m, "t1", until=("idle", "error"))
     assert st["messages"][-1]["content"] == "Deleted it." and store.list("tasks") == []
+    assert m.threads()[0]["work"] == []
+
+
+def test_activity_shows_delegated_assignment_and_keeps_chat_history_separate():
+    m, store = manager()
+    lead = AgentSpec("lead", "coordinates", "x", "fake", delegates=["task_runner"])
+    m.agents["lead"] = lead
+    replies = iter([call("delegate", agent="task_runner", task="Remove the obsolete draft"), "Finished"])
+    worker = iter([call("delete_task", id=1), "Kept it"])
+    m.graph = build_graph(m.agents, RouterConfig("fake", None, "lead"), m.tracer, store=store,
+                          adapters={"lead": FakeAdapter(reply=lambda *_: next(replies)),
+                                    "task_runner": FakeAdapter(reply=lambda *_: next(worker))},
+                          router_adapter=FakeAdapter())
+    m.send("team", "Clean up drafts", "lead")
+    st = wait(m, "team")
+    assert st["state"] == "approval"
+    assert [(w["agent"], w["task"]) for w in m.threads()[0]["work"]] == [
+        ("lead", "Clean up drafts"), ("task_runner", "Remove the obsolete draft")]
+    assert st["activity"][0]["kind"] == "start" and st["activity"][0]["agent"] == "task_runner"
+    assert m.state("unrelated")["activity"] == []
+    m.decide("team", "no")
+    assert wait(m, "team", until=("idle", "error"))["activity"][0]["agent"] == "lead"
+    assert m.threads()[0]["work"] == []
 
 
 def test_deny_from_the_page():

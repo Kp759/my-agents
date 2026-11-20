@@ -36,7 +36,9 @@ class ChatManager:
 
     def threads(self) -> list[dict]:
         rows = self.store.db.execute("SELECT * FROM chat_threads ORDER BY updated DESC LIMIT 100").fetchall()
-        return [dict(r) | {"state": self.status.get(r["id"], {}).get("state", "idle")} for r in rows]
+        with self.lock:
+            return [dict(r) | {"state": self.status.get(r["id"], {}).get("state", "idle"),
+                               "work": self.status.get(r["id"], {}).get("work", [])} for r in rows]
 
     def new_thread(self) -> str:
         return uuid.uuid4().hex[:8]
@@ -50,8 +52,10 @@ class ChatManager:
 
     def state(self, thread_id: str) -> dict:
         values = self.graph.get_state({"configurable": {"thread_id": thread_id}}).values or {}
-        st = self.status.get(thread_id, {"state": "idle"})
-        return {"thread_id": thread_id, "messages": values.get("messages", []), **st}
+        posts = self.store.list("board", {"thread_id": thread_id}, limit=8)
+        with self.lock:
+            st = self.status.get(thread_id, {"state": "idle"})
+            return {"thread_id": thread_id, "messages": values.get("messages", []), "activity": posts, **st}
 
     # ---- running --------------------------------------------------------------------
 
@@ -69,7 +73,7 @@ class ChatManager:
             if self.status.get(thread_id, {}).get("state") in ("running", "approval"):
                 raise ValueError("this conversation is still working; wait for it to finish")
             request_id = uuid.uuid4().hex
-            self.status[thread_id] = {"state": "running", "request_id": request_id}
+            self.status[thread_id] = {"state": "running", "request_id": request_id, "task": text[:300], "work": []}
         self._touch(thread_id, text)
         payload = {"messages": [{"role": "user", "content": text}], "forced_agent": agent or None}
         threading.Thread(target=self._run, args=(thread_id, payload, request_id), daemon=True).start()
@@ -86,7 +90,8 @@ class ChatManager:
                 raise ValueError("nothing is waiting for approval in this conversation")
             if decision == "all" and not st["approval"].get("allow_all"):
                 raise ValueError("this action can only be approved one at a time")
-            self.status[thread_id] = {"state": "running", "request_id": st["request_id"]}
+            self.status[thread_id] = {**st, "state": "running"}
+            self.status[thread_id].pop("approval", None)
         threading.Thread(target=self._run, args=(thread_id, Command(resume=decision), st["request_id"]),
                          daemon=True).start()
         return {"ok": True}
@@ -98,7 +103,22 @@ class ChatManager:
             for chunk in self.graph.stream(payload, config, stream_mode="updates"):
                 if "__interrupt__" in chunk:
                     approval = chunk["__interrupt__"][0].value
-            new = ({"state": "approval", "request_id": request_id, "approval": approval} if approval
+                    continue
+                for update in chunk.values():
+                    if not isinstance(update, dict):
+                        continue
+                    with self.lock:
+                        st = self.status[thread_id]
+                        work = st["work"]
+                        if update.get("agent"):
+                            work = [{"agent": frame["agent"], "task": (frame.get("task") or st["task"])[:300]}
+                                    for frame in update.get("stack", [])]
+                            work.append({"agent": update["agent"], "task": (update.get("task") or st["task"])[:300]})
+                        if work and "pending_call" in update:
+                            tool = (update["pending_call"] or {}).get("tool")
+                            work = [*work[:-1], {**work[-1], "tool": tool}]
+                        self.status[thread_id] = {**st, "work": work}
+            new = ({**self.status[thread_id], "state": "approval", "approval": approval} if approval
                    else {"state": "idle", "request_id": request_id})
         except Exception as e:  # shown in the chat instead of crashing the server
             new = {"state": "error", "request_id": request_id, "error": f"{type(e).__name__}: {e}"}
