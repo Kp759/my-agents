@@ -16,7 +16,8 @@ def tools(store: Store) -> list[Tool]:
         return store.insert("tasks", title=title, details=details, priority=priority, due=due)
 
     def list_tasks(status=None, limit=30):
-        return store.list("tasks", {"status": status}, order="status, due IS NULL, due, id", limit=limit)
+        order = "CASE status WHEN 'doing' THEN 0 WHEN 'todo' THEN 1 ELSE 2 END, due IS NULL, due, id"
+        return store.list("tasks", {"status": status}, order=order, limit=limit)
 
     def update_task(id, title=None, details=None, status=None, priority=None, due=None, result=None):
         return store.update("tasks", id, title=title, details=details, status=status,

@@ -291,6 +291,23 @@ def test_shipped_specs_build_a_graph():
     assert {"route", "tools", *specs} <= set(graph.get_graph().nodes)
 
 
+def test_list_tasks_prioritizes_open_tasks_before_applying_default_limit():
+    store = Store(":memory:")
+    for i in range(30):
+        store.insert("tasks", title=f"Finished {i}", status="done")
+    store.insert("tasks", title="Undated")
+    store.insert("tasks", title="Due later", due="2026-11-30")
+    store.insert("tasks", title="Due sooner", due="2026-11-20")
+    store.insert("tasks", title="In progress", status="doing")
+
+    list_tasks = make_toolbox(store)["list_tasks"]
+    rows = list_tasks.run({})
+    assert len(rows) == 30
+    assert [r["title"] for r in rows[:4]] == ["In progress", "Due sooner", "Due later", "Undated"]
+    assert [r["title"] for r in rows[4:]] == [f"Finished {i}" for i in range(26)]
+    assert [r["title"] for r in list_tasks.run({"status": "todo", "limit": 1})] == ["Due sooner"]
+
+
 def test_memory_tools_round_trip():
     tools = make_toolbox(Store(":memory:"))
     exp = tools["log_experiment"].run({"name": "lr sweep", "metrics": {"acc": 0.8}})
