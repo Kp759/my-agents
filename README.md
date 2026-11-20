@@ -24,6 +24,10 @@ The shared goal of every agent: help you become a strong candidate for a researc
 
 The Coder and the Reviewer run on **different model families** on purpose, so the review catches different mistakes.
 
+Ask `@friday` “What tasks are due this week?” or `@task_runner` “What should I do next?”
+The agenda orders open tasks by deadline, then priority. For a saved paper, ask
+`@lit_surveyor` for part of its title or an author's name. You can narrow the results by tag or reading status.
+
 ## How a request flows
 
 ```

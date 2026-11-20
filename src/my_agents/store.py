@@ -83,6 +83,7 @@ class Store:
         self.path = str(path)
         self.db = sqlite3.connect(self.path, check_same_thread=False)
         self.db.row_factory = sqlite3.Row
+        self.db.create_function("casefold", 1, lambda s: str(s or "").casefold(), deterministic=True)
         self.db.executescript(SCHEMA)
 
     def insert(self, table: str, **fields) -> dict:
@@ -132,6 +133,36 @@ class Store:
         clause = " AND ".join(f"{k} = ?" for k in where)
         sql = f"SELECT * FROM {table}" + (f" WHERE {clause}" if clause else "") + f" ORDER BY {order} LIMIT ?"
         return [_decode(r) for r in self.db.execute(sql, [*where.values(), limit])]
+
+    def task_agenda(self, start: str | None, end: str | None, limit: int) -> list[dict]:
+        # Older rows can have empty or free-form due dates. Keep them in the backlog.
+        sql = """
+            WITH open_tasks AS (
+                SELECT *, CASE WHEN date(due, '+0 days') = due THEN due END AS deadline
+                FROM tasks WHERE status IN ('todo', 'doing')
+            )
+            SELECT id, title, status, priority, due FROM open_tasks
+            WHERE (:start IS NULL OR deadline >= :start) AND (:end IS NULL OR deadline <= :end)
+            ORDER BY deadline IS NULL, deadline,
+                CASE priority WHEN 'high' THEN 0 WHEN 'low' THEN 2 ELSE 1 END, id
+            LIMIT :limit
+        """
+        return [dict(row) for row in self.db.execute(sql, {"start": start, "end": end, "limit": limit})]
+
+    def list_papers(self, status=None, tag=None, limit=30, query=None) -> list[dict]:
+        clauses, args = [], []
+        if status is not None:
+            clauses.append("status = ?")
+            args.append(status)
+        if tag:
+            clauses.append("instr(casefold(tags), ?) > 0")
+            args.append(tag.casefold())
+        if query:
+            clauses.append("(instr(casefold(title), ?) > 0 OR instr(casefold(authors), ?) > 0)")
+            args.extend([query.casefold(), query.casefold()])
+        where = " WHERE " + " AND ".join(clauses) if clauses else ""
+        sql = "SELECT * FROM papers" + where + " ORDER BY id DESC LIMIT ?"
+        return [dict(row) for row in self.db.execute(sql, [*args, limit])]
 
     def upsert_skill(self, skill: str, **fields) -> dict:
         row = self.db.execute("SELECT id FROM skills WHERE lower(skill) = lower(?)", [skill]).fetchone()

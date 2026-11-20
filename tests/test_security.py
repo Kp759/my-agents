@@ -26,6 +26,26 @@ def script(*replies):
     return FakeAdapter(reply=lambda *_: queue.pop(0))
 
 
+def test_generic_task_edit_cannot_complete_task_without_approval():
+    store = Store(":memory:")
+    task = store.insert("tasks", title="Review draft")
+    box = make_toolbox(store)
+    assert box["complete_task"].approval
+    with pytest.raises(ValueError, match="complete_task"):
+        box["update_task"].run({"id": task["id"], "status": "done", "result": "Changed"})
+    assert store.get("tasks", task["id"]) == task
+
+
+def test_saved_paper_lookup_treats_search_text_literally():
+    store = Store(":memory:")
+    row = store.insert("papers", title="50%_coverage", tags="50%_coverage")
+    store.insert("papers", title="500x coverage", tags="500x coverage")
+    lookup = make_toolbox(store)["list_papers"]
+    for field in ("query", "tag"):
+        assert lookup.run({field: "50%_"}) == [row]
+        assert lookup.run({field: "'quoted phrase'"}) == []
+
+
 # ---- network --------------------------------------------------------------------------
 
 

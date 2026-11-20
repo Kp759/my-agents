@@ -5,7 +5,7 @@ description: >-
 backend: claude-cli
 model: haiku
 board_context: true
-tools: [add_milestone, update_milestone, list_milestones, add_note, list_notes, list_tasks,
+tools: [add_milestone, update_milestone, list_milestones, add_note, list_notes, list_tasks, task_agenda,
         list_experiments, web_search, web_fetch]
 system_prompt: |
   You are the PhD Tracker. You keep the big picture: where the student is in the PhD and
@@ -15,4 +15,5 @@ system_prompt: |
     and action items.
   - For a progress review: upcoming deadlines (next 30 and 90 days), milestones at risk, what moved
     since the last review (tasks, experiments), and the one thing to focus on this week.
+    Use task_agenda with due_through to include overdue tasks in a deadline review.
   - Be honest about risk; be brief.

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import date
+
 from .. import study
 from ..store import Store
 from . import Tool
@@ -9,6 +11,17 @@ from . import Tool
 TASK_STATUS = "todo | doing | done"
 EXP_STATUS = "planned | running | done | failed"
 MILESTONE_STATUS = "planned | in_progress | done | blocked"
+
+
+def _agenda_date(value):
+    if value is None:
+        return None
+    try:
+        if date.fromisoformat(value).isoformat() == value:
+            return value
+    except (ValueError, TypeError):
+        pass
+    raise ValueError("use YYYY-MM-DD for agenda dates")
 
 
 def tools(store: Store) -> list[Tool]:
@@ -19,11 +32,21 @@ def tools(store: Store) -> list[Tool]:
         order = "CASE status WHEN 'doing' THEN 0 WHEN 'todo' THEN 1 ELSE 2 END, due IS NULL, due, id"
         return store.list("tasks", {"status": status}, order=order, limit=limit)
 
+    def task_agenda(due_from=None, due_through=None, limit=30):
+        start, end = _agenda_date(due_from), _agenda_date(due_through)
+        if start and end and start > end:
+            raise ValueError("due_from must be on or before due_through")
+        if type(limit) is not int or not 1 <= limit <= 100:
+            raise ValueError("limit must be an integer from 1 to 100")
+        return store.task_agenda(start, end, limit)
+
     def update_task(id, title=None, details=None, status=None, priority=None, due=None, result=None):
+        if status is not None and status not in ("todo", "doing"):
+            raise ValueError("update_task accepts todo or doing; use complete_task to mark a task done")
         return store.update("tasks", id, title=title, details=details, status=status,
                             priority=priority, due=due, result=result)
 
-    def complete_task(id, result=""):
+    def complete_task(id, result=None):
         return store.update("tasks", id, status="done", result=result)
 
     def delete_task(id):
@@ -71,12 +94,6 @@ def tools(store: Store) -> list[Tool]:
     def update_paper(id, summary=None, tags=None, status=None):
         return store.update("papers", id, summary=summary, tags=tags, status=status)
 
-    def list_papers(status=None, tag=None, limit=30):
-        rows = store.list("papers", {"status": status}, limit=500 if tag else limit)
-        if tag:
-            rows = [r for r in rows if tag.lower() in (r["tags"] or "").lower()][:limit]
-        return rows
-
     def record_quiz_result(topic, score, gaps=None):
         result = store.insert("quiz_results", topic=topic, score=float(score), gaps=gaps)
         r = study.review(store, topic, float(score))  # spaced repetition: when to quiz this again
@@ -97,9 +114,13 @@ def tools(store: Store) -> list[Tool]:
               "due": "str, YYYY-MM-DD, optional"}, add_task, writes=True),
         Tool("list_tasks", "List tasks, open ones first.",
              {"status": f"str, {TASK_STATUS}, optional", "limit": "int, optional"}, list_tasks),
+        Tool("task_agenda", "List open tasks by earliest deadline, then priority. Undated tasks come last "
+             "and are excluded when either date bound is given.",
+             {"due_from": "str, inclusive YYYY-MM-DD, optional", "due_through": "str, inclusive YYYY-MM-DD, optional",
+              "limit": "int, 1-100, optional"}, task_agenda),
         Tool("update_task", "Edit a task's fields or status.",
              {"id": "int", "title": "str, optional", "details": "str, optional",
-              "status": f"str, {TASK_STATUS}, optional", "priority": "str, optional",
+              "status": "str, todo | doing, optional", "priority": "str, optional",
               "due": "str, optional", "result": "str, what was produced, optional"}, update_task, writes=True),
         Tool("complete_task", "Mark a task done and record what was produced. Asks the user first.",
              {"id": "int", "result": "str, optional"}, complete_task, approval=True, writes=True),
@@ -134,8 +155,9 @@ def tools(store: Store) -> list[Tool]:
         Tool("update_paper", "Update a saved paper's summary, tags or status.",
              {"id": "int", "summary": "str, optional", "tags": "str, optional",
               "status": "str, to_read | read, optional"}, update_paper, writes=True),
-        Tool("list_papers", "List saved papers.",
-             {"status": "str, optional", "tag": "str, optional", "limit": "int, optional"}, list_papers),
+        Tool("list_papers", "Search the saved reading list, newest matches first.",
+             {"status": "str, optional", "tag": "str, tag substring, optional", "limit": "int, optional",
+              "query": "str, title or author substring, optional"}, store.list_papers),
         Tool("record_quiz_result", "Record how the user did on a quiz topic; also schedules its next review "
              "(spaced repetition). Use the topic name exactly as due_reviews shows it.",
              {"topic": "str", "score": "float, 0 to 1", "gaps": "str, what they missed, optional"},

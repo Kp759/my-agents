@@ -124,7 +124,7 @@ def test_tool_loop_runs_tool_then_answers():
 
 def test_tool_errors_go_back_to_the_model():
     specs = {"t": AgentSpec("t", "tasks", "x", "fake", tools=["update_task"])}
-    model = script(call("update_task", id=99, status="done"), "That task does not exist.")
+    model = script(call("update_task", id=99, status="doing"), "That task does not exist.")
     graph, _, _, _ = make({"t": model}, specs=specs)
     out = ask(graph, "finish task 99")
     assert "[tool error: update_task]" in model.calls[1][1][-1]["content"]
