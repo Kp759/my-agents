@@ -156,8 +156,7 @@ def parse_route(reply: str, names: list[str], default: str) -> str:
     text = reply.strip().lower().lstrip("@")
     if text in names:
         return text
-    hits = [(text.find(n), n) for n in names if n in text]
-    return min(hits)[1] if hits else default
+    return next((word for word in re.findall(r"[\w-]+", text) if word in names), default)
 
 
 def builtin_tools(spec: AgentSpec, agents: dict[str, AgentSpec]) -> list[Tool]:
@@ -311,6 +310,22 @@ def build_graph(
         return {"role": "user", "content": GROUND_NOTE.format(query=query, results=content)}, content
 
     # ---- agents --------------------------------------------------------------------
+    def return_to_caller(state: State, searched: State, agent: str, result: str, ids: dict) -> State:
+        stack = state["stack"]
+        caller = stack[-1]
+        tracer.record(**ids, node="return", agent=agent, backend="graph", model=None, latency_ms=0,
+                      decision=f"{agent} → {caller['agent']}", output_preview=preview(result))
+        tainted = bool(state.get("tainted") or searched.get("tainted"))
+        return {
+            **({"sources": searched["sources"]} if searched else {}),
+            "agent": caller["agent"], "task": caller["task"], "steps": caller["steps"],
+            "stack": stack[:-1], "pending_call": None, "tainted": caller["tainted"] or tainted,
+            "scratch": caller["scratch"] + [
+                {"role": "user", "content": format_result(f"delegate to {agent}", result,
+                                                          untrusted=labels and tainted)}
+            ],
+        }
+
     def make_agent_node(spec: AgentSpec):
         adapter = adapters[spec.name]
         tools_text = tools_prompt(list(agent_tools[spec.name].values()))
@@ -345,6 +360,11 @@ def build_graph(
                               prompt_chars=_chars(system, inputs), error=str(e), depth=len(state.get("stack") or []),
                               io={"system": system, "messages": inputs, "output": None})
                 board.post(spec.name, "error", str(e), ids["thread_id"])
+                if state.get("stack"):
+                    return return_to_caller(state, searched, spec.name,
+                                            "Delegation failed: the specialist's backend could not finish. "
+                                            "Earlier tool actions may have succeeded. Check stored results "
+                                            "before repeating any action.", ids)
                 raise
 
             call = parse_tool_call(completion.text)
@@ -363,26 +383,8 @@ def build_graph(
                 final = f"(stopped after {MAX_TOOL_STEPS} tool calls) " + final
             board.post(spec.name, "done", final, ids["thread_id"])
 
-            stack = state.get("stack") or []
-            if stack:  # return the answer to whoever delegated
-                caller = stack[-1]
-                tracer.record(**ids, node="return", agent=spec.name, backend="graph", model=None, latency_ms=0,
-                              decision=f"{spec.name} → {caller['agent']}", output_preview=preview(final))
-                tainted = bool(state.get("tainted") or searched)
-                return {
-                    **({"sources": searched["sources"]} if searched else {}),
-                    "agent": caller["agent"],
-                    "task": caller["task"],
-                    "steps": caller["steps"],
-                    "stack": stack[:-1],
-                    "pending_call": None,
-                    # a delegate that read untrusted content may pass injected text back up
-                    "tainted": caller["tainted"] or tainted,
-                    "scratch": caller["scratch"] + [
-                        {"role": "user", "content": format_result(f"delegate to {spec.name}", final,
-                                                                  untrusted=labels and tainted)}
-                    ],
-                }
+            if state.get("stack"):
+                return return_to_caller(state, searched, spec.name, final, ids)
             return {**searched, "messages": [{"role": "assistant", "content": final, "agent": spec.name}],
                     "scratch": [], "pending_call": None, "done": True}
 
@@ -464,7 +466,7 @@ def build_graph(
         caller, target, task = state["agent"], str(args.get("agent", "")).lstrip("@"), args.get("task")
         stack = state.get("stack") or []
         problem = (
-            "missing 'agent' or 'task'" if not target or not task else
+            "supply an agent and a nonempty text task" if not target or not isinstance(task, str) or not task.strip() else
             f"you cannot delegate to {target!r}; allowed: {agents[caller].delegates}"
             if target not in agents[caller].delegates else
             f"delegation depth limit ({MAX_DEPTH}) reached; do it yourself" if len(stack) >= MAX_DEPTH else
@@ -472,7 +474,7 @@ def build_graph(
             if state.get("delegations", 0) >= MAX_DELEGATIONS else None
         )
         tracer.record(**ids, node="delegate", agent=caller, backend="graph", model=None, latency_ms=0,
-                      decision=f"{caller} → {target}", args=preview(task), error=problem)
+                      decision=f"{caller} → {target}", args=preview(str(task)), error=problem)
         if problem:
             return _tool_result(state, "delegate", f"Delegation refused: {problem}")
         board.post(caller, "delegate", f"→ @{target}: {task}", ids["thread_id"])

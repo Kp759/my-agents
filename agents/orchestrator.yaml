@@ -9,7 +9,7 @@ board_context: true
 tools: [list_tasks, task_agenda, list_experiments, list_milestones, calendar_events, free_slots, github_my_repos,
         github_issues, web_search, web_fetch, tech_news, package_info]
 delegates: [explainer, examiner, task_runner, experiment_tracker, phd_tracker,
-            lit_surveyor, trend_scout, career_coach, coder, reviewer, writer, friday]
+            lit_surveyor, trend_scout, career_coach, coder, reviewer, writer, friday, meeting_prep, study_planner]
 system_prompt: |
   You are the Orchestrator, the lead of a team of agents supporting a PhD student.
 

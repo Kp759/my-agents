@@ -81,9 +81,6 @@ def tools(store: Store) -> list[Tool]:
     def add_note(content, kind=None):
         return store.insert("notes", content=content, kind=kind)
 
-    def list_notes(kind=None, limit=20):
-        return store.list("notes", {"kind": kind}, limit=limit)
-
     def save_paper(title, url, authors=None, year=None, summary=None, tags=None, status=None):
         existing = [p for p in store.list("papers", {"url": url}, limit=1)]
         if existing:
@@ -147,7 +144,9 @@ def tools(store: Store) -> list[Tool]:
              {"status": f"str, {MILESTONE_STATUS}, optional"}, list_milestones),
         Tool("add_note", "Save a note (e.g. kind=meeting, idea, feedback).",
              {"content": "str", "kind": "str, optional"}, add_note, writes=True),
-        Tool("list_notes", "List recent notes.", {"kind": "str, optional", "limit": "int, optional"}, list_notes),
+        Tool("list_notes", "Find saved notes, newest matches first.",
+             {"kind": "str, optional", "limit": "int, optional", "query": "str, text substring, optional"},
+             store.list_notes, untrusted=True),
         Tool("save_paper", "Save a paper to the reading list.",
              {"title": "str", "url": "str", "authors": "str, optional", "year": "int, optional",
               "summary": "str, optional", "tags": "str, comma-separated, optional",

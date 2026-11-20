@@ -99,6 +99,8 @@ def test_parse_route():
     assert parse_route("  @Examiner.\n", names, "explainer") == "examiner"
     assert parse_route("I'd pick the examiner, not the explainer", names, "explainer") == "examiner"
     assert parse_route("no idea", names, "explainer") == "explainer"
+    assert parse_route("technical_writer is unavailable. Use @meeting_prep.", ["writer", "meeting_prep"],
+                       "writer") == "meeting_prep"
 
 
 # ---- tools ---------------------------------------------------------------------------
@@ -226,6 +228,53 @@ def test_cannot_delegate_to_unlisted_agent():
     assert "cannot delegate" in orch.calls[1][1][-1]["content"]
 
 
+@pytest.mark.parametrize(("name", "tool", "args", "evidence"), [
+    ("meeting_prep", "list_notes", {"kind": "meeting", "query": "CAFÉ", "limit": 1}, "Review the café pilot"),
+    ("study_planner", "due_reviews", {}, "Practice retrieval"),
+])
+def test_shipped_specialists_read_evidence_when_routed_or_delegated(name, tool, args, evidence):
+    specs = load_agents()
+    for delegated in (False, True):
+        specialist = script(call(tool, **args), "Prepared.")
+        lead = script(call("delegate", agent=name, task="Prepare the brief"), "Brief received.")
+        graph, _, tracer, store = make({name: specialist, "orchestrator": lead}, specs=specs,
+                                       router_reply="orchestrator" if delegated else name)
+        store.insert("notes", content="Review the café pilot", kind="meeting")
+        store.insert("notes", content="Another meeting", kind="meeting")
+        store.insert("notes", content="Unrelated café menu", kind="personal")
+        store.insert("reviews", topic="Practice retrieval", due="2001-01-01")
+        out = ask(graph, "Prepare the brief")
+        assert evidence in specialist.calls[1][1][-1]["content"]
+        assert out["messages"][-1]["content"] == ("Brief received." if delegated else "Prepared.")
+        assert any(r.get("tool") == tool and r["agent"] == name for r in tracer.rows)
+
+
+def test_failed_delegate_returns_control_after_a_successful_tool_write():
+    def child_reply(_system, messages):
+        if len(messages) == 1:
+            return call("add_task", title="Check pilot results")
+        raise AdapterError("backend unavailable")
+
+    lead = script(call("delegate", agent="task_runner", task="Add a pilot follow-up"), "Please check the task.")
+    graph, _, tracer, store = make({"task_runner": FakeAdapter(reply=child_reply), "orchestrator": lead},
+                                   specs=load_agents(), entry="orchestrator")
+    out = ask(graph, "Record a follow-up")
+    assert out["messages"][-1]["content"] == "Please check the task."
+    assert "Delegation failed" in lead.calls[1][1][-1]["content"]
+    assert [r["title"] for r in store.list("tasks")] == ["Check pilot results"]
+    assert any(r["node"] == "task_runner" and r.get("error") == "backend unavailable" for r in tracer.rows)
+    assert any(r["node"] == "return" and r["agent"] == "task_runner" for r in tracer.rows)
+
+
+def test_malformed_delegation_can_be_corrected_in_the_same_turn():
+    lead = script(call("delegate", agent="study_planner", task={"minutes": 30}),
+                  call("delegate", agent="study_planner", task="Plan a 30 minute session."), "Plan ready.")
+    graph, adapters, _, _ = make({"orchestrator": lead}, specs=load_agents(), entry="orchestrator")
+    assert ask(graph, "Plan revision")["messages"][-1]["content"] == "Plan ready."
+    assert "nonempty text task" in lead.calls[1][1][-1]["content"]
+    assert len(adapters["study_planner"].calls) == 1
+
+
 # ---- reporting -----------------------------------------------------------------------
 
 
@@ -285,7 +334,8 @@ def test_render_transcript():
 def test_shipped_specs_build_a_graph():
     specs = load_agents()
     assert {"orchestrator", "explainer", "examiner", "task_runner", "experiment_tracker", "phd_tracker",
-            "lit_surveyor", "trend_scout", "career_coach", "coder", "reviewer", "writer", "friday"} == set(specs)
+            "lit_surveyor", "trend_scout", "career_coach", "coder", "reviewer", "writer", "friday",
+            "meeting_prep", "study_planner"} == set(specs)
     graph = build_graph(specs, load_router_config(), NullTracer(), store=Store(":memory:"),
                         adapters={n: FakeAdapter() for n in specs}, router_adapter=FakeAdapter())
     assert {"route", "tools", *specs} <= set(graph.get_graph().nodes)

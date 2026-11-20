@@ -149,6 +149,14 @@ class Store:
         """
         return [dict(row) for row in self.db.execute(sql, {"start": start, "end": end, "limit": limit})]
 
+    def list_notes(self, kind=None, limit=20, query=None) -> list[dict]:
+        if not query:
+            return self.list("notes", {"kind": kind}, limit=limit)
+        sql = """SELECT * FROM notes
+                 WHERE (:kind IS NULL OR kind = :kind) AND instr(casefold(content), :query) > 0
+                 ORDER BY id DESC LIMIT :limit"""
+        return [dict(row) for row in self.db.execute(sql, {"kind": kind, "query": query.casefold(), "limit": limit})]
+
     def list_papers(self, status=None, tag=None, limit=30, query=None) -> list[dict]:
         clauses, args = [], []
         if status is not None:
